@@ -62,7 +62,29 @@ All services used are free tier.
 
 ## Deployment
 
-Deployed on Vercel with a Neon PostgreSQL database. Set the same environment variables in the Vercel project settings.
+### Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `AUTH_SECRET` | Auth.js secret — generate with `openssl rand -base64 32` |
+| `ADMIN_EMAIL` | Initial admin email (used by seeding) |
+| `ADMIN_PASSWORD` | Initial admin password (used by seeding) |
+| `ADMIN_NAME` | Initial admin name (used by seeding) |
+
+### Vercel (free tier)
+
+1. Push the repository to GitHub and import it into Vercel.
+2. Add the environment variables above in the project settings.
+3. Deploy. Database migrations run automatically as part of the build.
+4. Seed the initial admin account from your machine against the production database:
+   ```bash
+   DATABASE_URL=<production-url> ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=<strong-password> ADMIN_NAME=Administrator npm run db:seed
+   ```
+
+### Neon (free tier)
+
+Create a free-tier Neon project and copy the connection string into `DATABASE_URL`.
 
 ## License
 
