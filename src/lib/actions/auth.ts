@@ -16,7 +16,7 @@ function value(formData: FormData, key: string): string {
 
 export async function logout() {
   const user = await requireUser().catch(() => null);
-  const target = user?.role === "admin" ? "/admin/login" : "/login";
+  const target = user?.role === "admin" || user?.role === "trainer" ? "/admin/login" : "/login";
   await signOut({ redirectTo: target });
 }
 

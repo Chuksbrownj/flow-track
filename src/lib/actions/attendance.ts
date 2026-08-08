@@ -6,7 +6,7 @@ import { and, eq, ne } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
 import { attendance, trainees, users } from "@/db/schema";
-import { requireAdmin, requireUser } from "@/lib/auth-guard";
+import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { attendanceEditable, isCheckinOpen, todayStr } from "@/lib/date";
 
 export type ActionResult = {
@@ -158,7 +158,7 @@ export async function confirmAttendance(
   status: "present" | "absent",
   date?: string
 ): Promise<ActionResult> {
-  const admin = await requireAdmin();
+  const admin = await requireStaff();
   if (status !== "present" && status !== "absent") return { ok: false, error: "Invalid status." };
 
   const day = validDate(date);
@@ -202,7 +202,7 @@ export async function confirmAttendance(
  * Trainer reset of a trainee's device binding (e.g. lost device / network change).
  */
 export async function resetDeviceBinding(traineeId: string): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
   try {
     await db()
       .update(trainees)
@@ -224,7 +224,7 @@ export async function markAttendance(
   status: "present" | "absent",
   date?: string
 ): Promise<ActionResult> {
-  const admin = await requireAdmin();
+  const admin = await requireStaff();
 
   if (status !== "present" && status !== "absent") {
     return { ok: false, error: "Invalid status." };

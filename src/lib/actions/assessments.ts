@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { assessments, trainees } from "@/db/schema";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireStaff } from "@/lib/auth-guard";
 import { validateScore } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -17,7 +17,7 @@ export async function saveAssessment(
   traineeId: string,
   scores: AssessmentInput
 ): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
 
   const values: Partial<Record<ScoreKey, number>> = {};
   for (const key of scoreKeys) {

@@ -1,13 +1,13 @@
 import { asc } from "drizzle-orm";
 import { ScheduleClient } from "@/components/schedule/schedule-client";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireStaff } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { trainingSchedule } from "@/db/schema";
 
 export const metadata = { title: "Training Schedule" };
 
 export default async function SchedulePage() {
-  await requireAdmin();
+  await requireStaff();
   const rows = await db()
     .select()
     .from(trainingSchedule)

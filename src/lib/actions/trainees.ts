@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { trainees } from "@/db/schema";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireStaff } from "@/lib/auth-guard";
 import { validateTrainee } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -14,7 +14,7 @@ function value(formData: FormData, key: string): string {
 }
 
 export async function createTrainee(formData: FormData): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
 
   const input = {
     registrationNumber: value(formData, "registrationNumber"),
@@ -56,7 +56,7 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateTrainee(id: string, formData: FormData): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
 
   const input = {
     registrationNumber: value(formData, "registrationNumber"),
@@ -124,7 +124,7 @@ export async function setTraineeStatus(
   id: string,
   status: "active" | "inactive"
 ): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
 
   if (status !== "active" && status !== "inactive") {
     return { ok: false, error: "Invalid status." };
@@ -156,7 +156,7 @@ async function nextRegistrationNumber(): Promise<string> {
 }
 
 export async function approveTrainee(id: string): Promise<ActionResult> {
-  await requireAdmin();
+  await requireStaff();
 
   const [trainee] = await db()
     .select({ id: trainees.id, status: trainees.status, registrationNumber: trainees.registrationNumber })

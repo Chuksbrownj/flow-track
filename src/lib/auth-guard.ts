@@ -9,6 +9,13 @@ export async function requireUser() {
 
 export async function requireAdmin() {
   const user = await requireUser();
-  if (user.role !== "admin") redirect("/portal");
+  if (user.role !== "admin") redirect("/dashboard");
+  return user;
+}
+
+/** Master admin or trainer (any staff member). */
+export async function requireStaff() {
+  const user = await requireUser();
+  if (user.role !== "admin" && user.role !== "trainer") redirect("/portal");
   return user;
 }

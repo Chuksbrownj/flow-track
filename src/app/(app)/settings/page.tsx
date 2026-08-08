@@ -1,6 +1,6 @@
 import { Building2, Info, ShieldCheck } from "lucide-react";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireStaff } from "@/lib/auth-guard";
 import {
   Card,
   CardContent,
@@ -21,7 +21,7 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 export default async function SettingsPage() {
-  await requireAdmin();
+  await requireStaff();
   return (
     <div className="space-y-6">
       <div>

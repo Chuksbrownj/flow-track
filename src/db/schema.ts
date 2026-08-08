@@ -15,6 +15,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("admin"),
+  topic: text("topic"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -75,6 +76,61 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const exams = pgTable("assessment_exams", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  title: text("title").notNull(),
+  topic: text("topic").notNull(),
+  description: text("description"),
+  durationMinutes: integer("duration_minutes").notNull().default(30),
+  status: text("status").notNull().default("draft"),
+  opensAt: timestamp("opens_at", { withTimezone: true }),
+  closesAt: timestamp("closes_at", { withTimezone: true }),
+  createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const examQuestions = pgTable("assessment_questions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  examId: uuid("exam_id")
+    .notNull()
+    .references(() => exams.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  prompt: text("prompt").notNull(),
+  options: text("options"),
+  correctOption: integer("correct_option"),
+  points: integer("points").notNull().default(1),
+  order: integer("order").notNull().default(0),
+});
+
+export const examSubmissions = pgTable(
+  "assessment_submissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examId: uuid("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    traineeId: uuid("trainee_id")
+      .notNull()
+      .references(() => trainees.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("in_progress"),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    currentQuestion: integer("current_question").notNull().default(0),
+    fullscreenViolations: integer("fullscreen_violations").notNull().default(0),
+    answers: text("answers"),
+    autoScore: integer("auto_score"),
+    totalPoints: integer("total_points").notNull().default(0),
+    writtenScore: integer("written_score"),
+    writtenGrades: text("written_grades"),
+    gradedById: uuid("graded_by_id").references(() => users.id, { onDelete: "set null" }),
+    gradedAt: timestamp("graded_at", { withTimezone: true }),
+    overriddenAt: timestamp("overridden_at", { withTimezone: true }),
+    overriddenById: uuid("overridden_by_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId)]
+);
 
 export const trainingSchedule = pgTable("training_schedule", {
   id: uuid("id").defaultRandom().primaryKey(),

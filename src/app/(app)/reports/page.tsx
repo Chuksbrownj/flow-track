@@ -1,6 +1,6 @@
 import { asc, avg, count, desc, eq } from "drizzle-orm";
 import { ReportsClient } from "@/components/reports/reports-client";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireStaff } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, attendance, trainees } from "@/db/schema";
 import { settleAttendance } from "@/lib/attendance-settle";
@@ -18,7 +18,7 @@ function toAverage(value: string | null): number | null {
 }
 
 export default async function ReportsPage() {
-  await requireAdmin();
+  await requireStaff();
   await settleAttendance();
   const database = db();
 

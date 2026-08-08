@@ -13,7 +13,9 @@ export default async function AdminLoginPage({
 }) {
   const session = await auth();
   const { changed } = await searchParams;
-  if (session?.user) redirect(session.user.role === "admin" ? "/dashboard" : "/portal");
+  if (session?.user) {
+    redirect(session.user.role === "admin" || session.user.role === "trainer" ? "/dashboard" : "/portal");
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-secondary/70 p-4">

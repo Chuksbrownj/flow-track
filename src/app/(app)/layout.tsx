@@ -7,11 +7,13 @@ import { UserMenu } from "@/components/layout/user-menu";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const role = session.user.role === "admin" ? "admin" : "trainee";
+  const role = session.user.role === "admin" ? "admin" : session.user.role === "trainer" ? "trainer" : "trainee";
   const displayName =
     role === "admin"
       ? session.user.name ?? "Administrator"
-      : session.user.name?.trim().split(/\s+/)[0] || "Trainee";
+      : role === "trainer"
+        ? session.user.name ?? "Trainer"
+        : session.user.name?.trim().split(/\s+/)[0] || "Trainee";
 
   return (
     <div className="flex min-h-screen bg-muted/40">
