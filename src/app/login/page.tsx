@@ -1,0 +1,30 @@
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import { LoginForm } from "@/components/auth/login-form";
+
+export const metadata = { title: "Sign in" };
+
+export default async function LoginPage() {
+  const session = await auth();
+  if (session?.user) redirect("/dashboard");
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-secondary/70 p-4">
+      <div className="w-full max-w-sm rounded-2xl border bg-card p-8 shadow-sm">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span className="text-lg font-bold">FT</span>
+          </div>
+          <h1 className="text-xl font-semibold tracking-tight">FlowTrack</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            OYA / HYPREP Digital Skills Training Programme
+          </p>
+        </div>
+        <LoginForm />
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Authorized personnel only.
+        </p>
+      </div>
+    </main>
+  );
+}
