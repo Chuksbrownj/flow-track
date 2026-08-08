@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { UserCircle } from "lucide-react";
 import { ProfileView } from "@/components/profile/profile-view";
+import { ProfileAttendance } from "@/components/profile/profile-attendance";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
   Card,
@@ -12,18 +13,27 @@ import {
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { trainees } from "@/db/schema";
-import { formatDate } from "@/lib/date";
+import { attendance, trainees } from "@/db/schema";
+import { currentMonth, formatDate, monthRange, todayStr } from "@/lib/date";
 import { maskEmail, maskPhone } from "@/lib/mask";
 
 export const metadata = { title: "Profile" };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
   const user = await requireUser();
   if (user.role === "admin") redirect("/dashboard");
 
+  const { month } = await searchParams;
+  const monthParam = month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
+  const { start, end } = monthRange(monthParam);
+
   const [trainee] = await db()
     .select({
+      id: trainees.id,
       fullName: trainees.fullName,
       registrationNumber: trainees.registrationNumber,
       gender: trainees.gender,
@@ -31,6 +41,7 @@ export default async function ProfilePage() {
       phone: trainees.phone,
       status: trainees.status,
       createdAt: trainees.createdAt,
+      deviceFingerprint: trainees.deviceFingerprint,
     })
     .from(trainees)
     .where(eq(trainees.userId, user.id ?? ""))
@@ -48,6 +59,24 @@ export default async function ProfilePage() {
       </div>
     );
   }
+
+  const [attendanceRows, todayRow] = await Promise.all([
+    db()
+      .select({ date: attendance.date, status: attendance.status })
+      .from(attendance)
+      .where(
+        and(
+          eq(attendance.traineeId, trainee.id),
+          gte(attendance.date, start),
+          lte(attendance.date, end)
+        )
+      ),
+    db()
+      .select({ status: attendance.status })
+      .from(attendance)
+      .where(and(eq(attendance.traineeId, trainee.id), eq(attendance.date, todayStr())))
+      .limit(1),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -80,6 +109,13 @@ export default async function ProfilePage() {
           />
         </CardContent>
       </Card>
+
+      <ProfileAttendance
+        month={monthParam}
+        records={attendanceRows.map((row) => ({ date: row.date, status: row.status }))}
+        todayStatus={todayRow[0]?.status ?? null}
+        deviceRegistered={!!trainee.deviceFingerprint}
+      />
     </div>
   );
 }

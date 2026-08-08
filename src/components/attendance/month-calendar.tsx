@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Clock3, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type CalendarRecord = { date: string; status: string };
@@ -50,11 +50,12 @@ export function MonthCalendar({
   const cells = useMemo(() => gridFor(month), [month]);
 
   const byDate = useMemo(() => {
-    const map: Record<string, { present: number; absent: number }> = {};
+    const map: Record<string, { present: number; absent: number; pending: number }> = {};
     for (const record of records) {
-      const entry = (map[record.date] ??= { present: 0, absent: 0 });
+      const entry = (map[record.date] ??= { present: 0, absent: 0, pending: 0 });
       if (record.status === "present") entry.present += 1;
       if (record.status === "absent") entry.absent += 1;
+      if (record.status === "pending") entry.pending += 1;
     }
     return map;
   }, [records]);
@@ -105,22 +106,34 @@ export function MonthCalendar({
           const isToday = date === todayStr;
 
           if (mode === "trainee") {
-            const status = counts && (counts.present > 0 ? "present" : counts.absent > 0 ? "absent" : undefined);
+            const status =
+              counts &&
+              (counts.present > 0
+                ? "present"
+                : counts.pending > 0
+                  ? "pending"
+                  : counts.absent > 0
+                    ? "absent"
+                    : undefined);
             return (
               <div
                 key={date}
                 className={`flex aspect-square flex-col items-center justify-center rounded-md border text-xs ${
                   status === "present"
                     ? "border-primary/30 bg-primary/10 text-primary"
-                    : status === "absent"
-                      ? "border-destructive/30 bg-destructive/10 text-destructive"
-                      : "border-transparent text-muted-foreground"
+                    : status === "pending"
+                      ? "border-gold/40 bg-gold/15 text-gold-foreground"
+                      : status === "absent"
+                        ? "border-destructive/30 bg-destructive/10 text-destructive"
+                        : "border-transparent text-muted-foreground"
                 } ${isToday ? "ring-1 ring-ring" : ""} ${isSelected ? "outline outline-1 outline-primary" : ""}`}
               >
                 <span className="font-medium">{Number(date.slice(8))}</span>
                 {status ? (
                   status === "present" ? (
                     <Check className="h-3 w-3" />
+                  ) : status === "pending" ? (
+                    <Clock3 className="h-3 w-3" />
                   ) : (
                     <X className="h-3 w-3" />
                   )
@@ -147,6 +160,12 @@ export function MonthCalendar({
                   <span className="font-semibold text-primary">{counts.present}</span>
                   <span className="text-muted-foreground">/</span>
                   <span className="font-semibold text-destructive">{counts.absent}</span>
+                  {counts.pending > 0 ? (
+                    <>
+                      <span className="text-muted-foreground">/</span>
+                      <span className="font-semibold text-gold-foreground">{counts.pending}</span>
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </button>
@@ -161,6 +180,9 @@ export function MonthCalendar({
           </span>
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-destructive" /> Absent
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-gold" /> Pending
           </span>
         </div>
       ) : null}

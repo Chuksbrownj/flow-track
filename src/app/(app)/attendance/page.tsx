@@ -40,6 +40,7 @@ export default async function AttendancePage({
       .select({
         traineeId: attendance.traineeId,
         status: attendance.status,
+        source: attendance.source,
         traineeName: trainees.fullName,
         registrationNumber: trainees.registrationNumber,
       })
@@ -66,6 +67,7 @@ export default async function AttendancePage({
         id: row.traineeId,
         traineeId: row.traineeId,
         status: row.status,
+        source: row.source,
         traineeName: row.traineeName,
         registrationNumber: row.registrationNumber,
       }))}

@@ -19,6 +19,7 @@ export default async function TraineesPage() {
     email: trainee.email,
     status: trainee.status,
     createdAt: trainee.createdAt.toISOString(),
+    hasDevice: !!trainee.deviceFingerprint,
   }));
 
   return <TraineesClient initialTrainees={traineeList} />;

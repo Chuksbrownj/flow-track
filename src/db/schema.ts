@@ -29,6 +29,8 @@ export const trainees = pgTable("trainees", {
   phone: text("phone").notNull(),
   email: text("email"),
   status: text("status").notNull().default("active"),
+  deviceFingerprint: text("device_fingerprint").unique(),
+  deviceIp: text("device_ip"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -42,6 +44,9 @@ export const attendance = pgTable(
       .references(() => trainees.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
     status: text("status").notNull(),
+    source: text("source").notNull().default("manual"),
+    confirmedById: uuid("confirmed_by_id").references(() => users.id, { onDelete: "set null" }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex("attendance_trainee_date_idx").on(t.traineeId, t.date)]

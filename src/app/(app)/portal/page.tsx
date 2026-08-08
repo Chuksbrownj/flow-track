@@ -1,6 +1,5 @@
-import { and, eq, gte, lte } from "drizzle-orm";
-import { CalendarCheck2, GraduationCap, Trophy } from "lucide-react";
-import { MonthCalendar } from "@/components/attendance/month-calendar";
+import { eq } from "drizzle-orm";
+import { GraduationCap, Trophy } from "lucide-react";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
   Card,
@@ -12,22 +11,13 @@ import {
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { assessments, attendance, trainees } from "@/db/schema";
-import { currentMonth, monthRange } from "@/lib/date";
+import { assessments, trainees } from "@/db/schema";
 
 export const metadata = { title: "My dashboard" };
 
-export default async function PortalPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string }>;
-}) {
+export default async function PortalPage() {
   const user = await requireUser();
   if (user.role === "admin") redirect("/dashboard");
-
-  const { month } = await searchParams;
-  const monthParam = month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
-  const { start, end } = monthRange(monthParam);
 
   const [trainee] = await db()
     .select()
@@ -48,17 +38,7 @@ export default async function PortalPage({
     );
   }
 
-  const [monthRows, assessmentRows] = await Promise.all([
-    db()
-      .select({ date: attendance.date, status: attendance.status })
-      .from(attendance)
-      .where(
-        and(
-          eq(attendance.traineeId, trainee.id),
-          gte(attendance.date, start),
-          lte(attendance.date, end)
-        )
-      ),
+  const [assessmentRows] = await Promise.all([
     db()
       .select({
         graphicDesign: assessments.graphicDesign,
@@ -107,8 +87,7 @@ export default async function PortalPage({
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <GraduationCap className="h-5 w-5 text-primary" />
@@ -144,25 +123,7 @@ export default async function PortalPage({
               </p>
             ) : null}
           </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarCheck2 className="h-5 w-5 text-primary" />
-              Attendance calendar
-            </CardTitle>
-            <CardDescription>Your present and absent days for the selected month.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MonthCalendar
-              month={monthParam}
-              records={monthRows.map((row) => ({ date: row.date, status: row.status }))}
-              mode="trainee"
-            />
-          </CardContent>
-        </Card>
-      </div>
+      </Card>
     </div>
   );
 }

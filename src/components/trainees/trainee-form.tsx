@@ -23,6 +23,7 @@ export type TraineeRow = {
   email: string | null;
   status: string;
   createdAt: string;
+  hasDevice?: boolean;
 };
 
 export function TraineeForm({

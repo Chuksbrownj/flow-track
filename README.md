@@ -2,6 +2,8 @@
 
 A simple training management system — trainees, attendance, assessments, schedule, and reports.
 
+🔗 **Live:** https://flow-track-gilt.vercel.app
+
 ## Stack
 
 - Next.js + TypeScript
@@ -17,8 +19,8 @@ All services used are free tier.
 
 1. Clone the repo
    ```bash
-   git clone https://github.com/your-username/flowtrack.git
-   cd flowtrack
+   git clone https://github.com/Chuksbrownj/flow-track.git
+   cd flow-track
    ```
 
 2. Install dependencies

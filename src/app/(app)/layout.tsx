@@ -8,6 +8,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await auth();
   if (!session?.user) redirect("/login");
   const role = session.user.role === "admin" ? "admin" : "trainee";
+  const displayName =
+    role === "admin"
+      ? session.user.name ?? "Administrator"
+      : session.user.name?.trim().split(/\s+/)[0] || "Trainee";
 
   return (
     <div className="flex min-h-screen bg-muted/40">
@@ -16,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:px-6">
           <MobileNav role={role} />
           <div className="ml-auto flex items-center gap-3">
-            <UserMenu name={session.user.name ?? role === "admin" ? "Administrator" : "Trainee"} email={session.user.email ?? ""} />
+            <UserMenu name={displayName} email={session.user.email ?? ""} />
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6 lg:p-8">{children}</main>

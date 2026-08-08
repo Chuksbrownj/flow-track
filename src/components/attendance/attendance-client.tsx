@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { markAttendance } from "@/lib/actions/attendance";
+import { confirmAttendance, markAttendance } from "@/lib/actions/attendance";
 import { MonthCalendar, type CalendarRecord } from "./month-calendar";
 
 export type TraineeOption = {
@@ -46,6 +46,7 @@ export type AttendanceRecord = {
   status: string;
   traineeName: string;
   registrationNumber: string | null;
+  source?: string;
 };
 
 export type MonthRecord = {
@@ -110,6 +111,7 @@ export function AttendanceClient({
 
   const present = records.filter((r) => r.status === "present").length;
   const absent = records.filter((r) => r.status === "absent").length;
+  const pending = records.filter((r) => r.status === "pending").length;
   const total = present + absent;
   const percentage = total === 0 ? 0 : Math.round((present / total) * 100);
 
@@ -127,7 +129,9 @@ export function AttendanceClient({
     setRecords((prev) => {
       const existing = prev.find((r) => r.traineeId === traineeId);
       if (existing) {
-        return prev.map((r) => (r.traineeId === traineeId ? { ...r, status } : r));
+        return prev.map((r) =>
+          r.traineeId === traineeId ? { ...r, status, source: r.source ?? "manual" } : r
+        );
       }
       return [
         ...prev,
@@ -137,6 +141,7 @@ export function AttendanceClient({
           status,
           traineeName: trainee?.fullName ?? "",
           registrationNumber: trainee?.registrationNumber ?? null,
+          source: "manual",
         },
       ];
     });
@@ -159,6 +164,20 @@ export function AttendanceClient({
       if (result.ok) {
         applyRecord(traineeId, status);
         toast.success(`${status === "present" ? "Marked present" : "Marked absent"}.`);
+      } else {
+        toast.error(result.error ?? "Something went wrong.");
+      }
+    });
+  }
+
+  function handleConfirm(traineeId: string, status: "present" | "absent") {
+    setPendingId(traineeId);
+    startTransition(async () => {
+      const result = await confirmAttendance(traineeId, status, date);
+      setPendingId(null);
+      if (result.ok) {
+        applyRecord(traineeId, status);
+        toast.success(status === "present" ? "Check-in confirmed." : "Check-in rejected.");
       } else {
         toast.error(result.error ?? "Something went wrong.");
       }
@@ -194,11 +213,66 @@ export function AttendanceClient({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Present" value={present} className="text-primary" />
         <Stat label="Absent" value={absent} className="text-destructive" />
+        <Stat label="Pending confirmation" value={pending} className="text-gold-foreground" />
         <Stat label="Attendance rate" value={percentage} />
       </div>
+
+      {pending > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending check-ins</CardTitle>
+            <CardDescription>
+              Auto check-ins awaiting confirmation. Confirm or reject them from any device.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {records
+                .filter((record) => record.status === "pending")
+                .map((record) => (
+                  <li
+                    key={record.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{record.traineeName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {record.registrationNumber ?? "—"}
+                        {record.source === "device" ? " · device check-in" : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status="pending" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-primary"
+                        disabled={pendingId === record.traineeId}
+                        onClick={() => handleConfirm(record.traineeId, "present")}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-destructive"
+                        disabled={pendingId === record.traineeId}
+                        onClick={() => handleConfirm(record.traineeId, "absent")}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
