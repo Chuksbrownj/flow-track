@@ -34,6 +34,14 @@ export default async function AdminLoginPage({
             Password updated successfully. Please sign in with your new password.
           </p>
         ) : null}
+        <div className="text-right">
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-primary underline-offset-3 hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <LoginForm emailPlaceholder="admin@thrilled.com" buttonLabel="Sign in to dashboard" />
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Are you a trainee?{" "}

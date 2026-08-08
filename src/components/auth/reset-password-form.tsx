@@ -21,7 +21,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
             Your password has been reset. You can now sign in with your new password.
           </span>
         </div>
-        <Button type="button" className="w-full" onClick={() => router.push("/login")}>
+        <Button
+          type="button"
+          className="w-full"
+          onClick={() => router.push(state.staff ? "/admin/login?changed=1" : "/login?changed=1")}
+        >
           Go to sign in
         </Button>
       </div>

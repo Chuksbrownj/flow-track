@@ -9,7 +9,7 @@ import { passwordResetTokens, users } from "@/db/schema";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { isValidEmail, validatePassword } from "@/lib/validation";
 
-export type ResetResult = { ok: boolean; error?: string };
+export type ResetResult = { ok: boolean; error?: string; staff?: boolean };
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -63,10 +63,18 @@ export async function resetPassword(
     return { ok: false, error: "This reset link is invalid or has expired." };
   }
 
+  const [user] = await db()
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, row.userId))
+    .limit(1);
+
   const passwordHash = await bcrypt.hash(password, 10);
   await db().update(users).set({ passwordHash }).where(eq(users.id, row.userId));
   await db()
     .delete(passwordResetTokens)
     .where(and(eq(passwordResetTokens.userId, row.userId), gt(passwordResetTokens.expiresAt, new Date())));
-  return { ok: true };
+
+  const isStaff = user?.role === "admin" || user?.role === "trainer";
+  return { ok: true, staff: isStaff };
 }

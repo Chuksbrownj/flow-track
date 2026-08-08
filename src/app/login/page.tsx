@@ -12,7 +12,10 @@ export default async function LoginPage({
 }) {
   const session = await auth();
   const { changed, registered } = await searchParams;
-  if (session?.user) redirect(session.user.role === "admin" ? "/dashboard" : "/portal");
+  if (session?.user) {
+    const isStaff = session.user.role === "admin" || session.user.role === "trainer";
+    redirect(isStaff ? "/dashboard" : "/portal");
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-secondary/70 p-4">

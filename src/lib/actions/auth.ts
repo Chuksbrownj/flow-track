@@ -122,7 +122,8 @@ export async function changePassword(formData: FormData): Promise<ActionResult> 
     return { ok: false, error: "Could not update your password. Try again." };
   }
 
-  const target = user.role === "admin" ? "/admin/login?changed=1" : "/login?changed=1";
+  const isStaff = user.role === "admin" || user.role === "trainer";
+  const target = isStaff ? "/admin/login?changed=1" : "/login?changed=1";
   await signOut({ redirectTo: target });
   return { ok: true };
 }
