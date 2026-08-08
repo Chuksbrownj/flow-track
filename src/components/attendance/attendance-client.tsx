@@ -24,13 +24,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { confirmAttendance, markAttendance } from "@/lib/actions/attendance";
 import { MonthCalendar, type CalendarRecord } from "./month-calendar";
 
@@ -74,6 +67,16 @@ function Stat({
   );
 }
 
+function filterTrainees(list: TraineeOption[], term: string) {
+  const q = term.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter(
+    (t) =>
+      t.fullName.toLowerCase().includes(q) ||
+      (t.registrationNumber?.toLowerCase().includes(q) ?? false)
+  );
+}
+
 export function AttendanceClient({
   date,
   month,
@@ -92,6 +95,7 @@ export function AttendanceClient({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [calendarQuery, setCalendarQuery] = useState("");
   const [records, setRecords] = useState(initialRecords);
   const [monthState, setMonthState] = useState<MonthRecord[]>(monthRecords);
   const [selectedTraineeId, setSelectedTraineeId] = useState<string | null>(
@@ -100,17 +104,22 @@ export function AttendanceClient({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  const matched = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return trainees
-      .filter(
-        (t) =>
-          t.fullName.toLowerCase().includes(q) ||
-          (t.registrationNumber?.toLowerCase().includes(q) ?? false)
-      )
-      .slice(0, 8);
-  }, [trainees, query]);
+  const sortedTrainees = useMemo(
+    () => [...trainees].sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [trainees]
+  );
+
+  // Mark attendance: show every trainee by default, filtered as you type.
+  const matched = useMemo(() => filterTrainees(sortedTrainees, query), [sortedTrainees, query]);
+  // Trainee calendar picker: searchable list of all trainees, with the
+  // currently selected trainee pinned to the top so the selection stays visible.
+  const calendarMatches = useMemo(() => {
+    const filtered = filterTrainees(sortedTrainees, calendarQuery);
+    if (!selectedTraineeId) return filtered;
+    const selected = filtered.find((t) => t.id === selectedTraineeId);
+    if (!selected) return filtered;
+    return [selected, ...filtered.filter((t) => t.id !== selectedTraineeId)];
+  }, [sortedTrainees, calendarQuery, selectedTraineeId]);
 
   const present = records.filter((r) => r.status === "present").length;
   const absent = records.filter((r) => r.status === "absent").length;
@@ -305,28 +314,28 @@ export function AttendanceClient({
               />
             </div>
 
-            {matched.length === 0 ? (
+            {trainees.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <Users className="h-5 w-5" />
                 </div>
-                <p className="text-sm font-medium">
-                  {query.trim()
-                    ? "No matching trainees"
-                    : trainees.length === 0
-                      ? "No active trainees yet"
-                      : "Type to find a trainee"}
-                </p>
+                <p className="text-sm font-medium">No active trainees yet</p>
                 <p className="text-xs text-muted-foreground">
-                  {query.trim()
-                    ? "Try a different name or registration number."
-                    : trainees.length === 0
-                      ? "Approve pending signups in the Trainees module first."
-                      : "Results will appear here as you type."}
+                  Approve pending signups in the Trainees module first.
+                </p>
+              </div>
+            ) : matched.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <Users className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-medium">No matching trainees</p>
+                <p className="text-xs text-muted-foreground">
+                  Try a different name or registration number.
                 </p>
               </div>
             ) : (
-              <ul className="space-y-2">
+              <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
                 {matched.map((t) => {
                   const current = records.find((r) => r.traineeId === t.id)?.status;
                   const busy = pendingId === t.id;
@@ -465,18 +474,51 @@ export function AttendanceClient({
             <CardDescription>See one trainee&apos;s attendance across the month.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Select value={selectedTraineeId ?? undefined} onValueChange={setSelectedTraineeId}>
-              <SelectTrigger className="w-full" aria-label="Select trainee">
-                <SelectValue placeholder="Select trainee" />
-              </SelectTrigger>
-              <SelectContent>
-                {trainees.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.fullName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={calendarQuery}
+                onChange={(event) => setCalendarQuery(event.target.value)}
+                placeholder="Search trainees..."
+                className="pl-9"
+                aria-label="Search trainees for calendar"
+              />
+            </div>
+
+            {trainees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active trainees yet.</p>
+            ) : calendarMatches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No matching trainees.</p>
+            ) : (
+              <ul className="max-h-44 space-y-1 overflow-y-auto rounded-lg border p-1">
+                {calendarMatches.map((t) => {
+                  const active = t.id === selectedTraineeId;
+                  return (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTraineeId(t.id)}
+                        aria-pressed={active}
+                        className={`w-full rounded-md px-3 py-2 text-left transition-colors ${
+                          active
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        <span className="block truncate text-sm font-medium">{t.fullName}</span>
+                        <span
+                          className={`block truncate text-xs ${
+                            active ? "text-primary-foreground/80" : "text-muted-foreground"
+                          }`}
+                        >
+                          {t.registrationNumber ?? "—"}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
 
             {selectedTrainee ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3">
