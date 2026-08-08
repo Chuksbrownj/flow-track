@@ -4,7 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { adminNavItems, traineeNavItems, trainerNavItems } from "./nav-items";
 
-export function SidebarNav({ role }: { role: string }) {
+export function SidebarNav({
+  role,
+  onNavigate,
+}: {
+  role: string;
+  /** Called after a nav item is clicked (e.g. to close the mobile drawer). */
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const items =
     role === "admin" ? adminNavItems : role === "trainer" ? trainerNavItems : traineeNavItems;
@@ -17,6 +24,7 @@ export function SidebarNav({ role }: { role: string }) {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               active
                 ? "bg-primary text-primary-foreground shadow-sm"

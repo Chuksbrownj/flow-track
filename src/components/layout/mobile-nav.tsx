@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +14,10 @@ import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 
 export function MobileNav({ role }: { role: string }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="outline" size="icon" className="md:hidden" aria-label="Open navigation">
           <Menu className="h-5 w-5" />
@@ -27,7 +30,7 @@ export function MobileNav({ role }: { role: string }) {
           </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-3">
-          <SidebarNav role={role} />
+          <SidebarNav role={role} onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>
