@@ -1,9 +1,18 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { AttendanceClient } from "@/components/attendance/attendance-client";
-import { requireAdmin } from "@/lib/auth-guard";
+import { ProfileAttendance } from "@/components/profile/profile-attendance";
+import { StatusBadge } from "@/components/app/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
-import { attendanceEditable, currentMonth, monthRange, todayStr } from "@/lib/date";
+import {
+  attendanceEditable,
+  currentMonth,
+  isCheckinOpen,
+  monthRange,
+  todayStr,
+} from "@/lib/date";
 import { settleAttendance } from "@/lib/attendance-settle";
 
 export const metadata = { title: "Attendance" };
@@ -18,11 +27,84 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ date?: string; month?: string }>;
 }) {
-  await requireAdmin();
+  const user = await requireUser();
 
   // Settle no-sign -> absent and unconfirmed -> absent rules before reading.
   await settleAttendance();
 
+  // Trainee self-service view (their own check-in page).
+  if (user.role !== "admin") {
+    const { month } = await searchParams;
+    const monthParam = validMonth(month);
+    const { start, end } = monthRange(monthParam);
+
+    const [trainee] = await db()
+      .select({
+        id: trainees.id,
+        fullName: trainees.fullName,
+        registrationNumber: trainees.registrationNumber,
+        status: trainees.status,
+        deviceFingerprint: trainees.deviceFingerprint,
+      })
+      .from(trainees)
+      .where(eq(trainees.userId, user.id ?? ""))
+      .limit(1);
+
+    if (!trainee) {
+      return (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              No trainee profile is linked to this account.
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    const [attendanceRows, todayRow] = await Promise.all([
+      db()
+        .select({ date: attendance.date, status: attendance.status })
+        .from(attendance)
+        .where(
+          and(
+            eq(attendance.traineeId, trainee.id),
+            gte(attendance.date, start),
+            lte(attendance.date, end)
+          )
+        ),
+      db()
+        .select({ status: attendance.status })
+        .from(attendance)
+        .where(and(eq(attendance.traineeId, trainee.id), eq(attendance.date, todayStr())))
+        .limit(1),
+    ]);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
+            <p className="text-sm text-muted-foreground">
+              {trainee.registrationNumber ?? "Registration pending"}
+            </p>
+          </div>
+          <StatusBadge status={trainee.status} />
+        </div>
+
+        <ProfileAttendance
+          month={monthParam}
+          records={attendanceRows.map((row) => ({ date: row.date, status: row.status }))}
+          todayStatus={todayRow[0]?.status ?? null}
+          deviceRegistered={!!trainee.deviceFingerprint}
+          checkinOpen={isCheckinOpen()}
+        />
+      </div>
+    );
+  }
+
+  // Admin management view.
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const monthParam = validMonth(month);

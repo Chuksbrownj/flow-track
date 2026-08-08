@@ -35,12 +35,18 @@ export function validatePassword(password: string) {
 }
 
 export function validateSignup(input: {
+  registrationNumber: string;
   fullName: string;
   email: string;
   phone: string;
   gender: string;
   password: string;
 }) {
+  if (!input.registrationNumber) return "Registration number is required.";
+  if (input.registrationNumber.length < 3 || input.registrationNumber.length > 30)
+    return "Registration number must be 3–30 characters.";
+  if (!REG_NO_PATTERN.test(input.registrationNumber))
+    return "Registration number may only contain letters, numbers, dashes and underscores.";
   if (!input.fullName || input.fullName.length < 3)
     return "Full name is required (at least 3 characters).";
   if (!isValidEmail(input.email)) return "Please enter a valid email address.";

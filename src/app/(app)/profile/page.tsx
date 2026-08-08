@@ -85,7 +85,7 @@ export default async function ProfilePage() {
       </Card>
 
       <Link
-        href="/profile/attendance"
+        href="/attendance"
         className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-muted/50"
       >
         <div className="flex items-center gap-3">

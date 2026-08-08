@@ -22,6 +22,7 @@ export async function logout() {
 
 export async function registerTrainee(formData: FormData): Promise<ActionResult> {
   const input = {
+    registrationNumber: value(formData, "registrationNumber").toUpperCase(),
     fullName: value(formData, "fullName"),
     email: value(formData, "email").toLowerCase(),
     phone: value(formData, "phone"),
@@ -39,13 +40,21 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
     .from(users)
     .where(eq(users.email, input.email))
     .limit(1);
-  const [existingTrainee] = await db()
+  const [existingTraineeByEmail] = await db()
     .select({ id: trainees.id })
     .from(trainees)
     .where(eq(trainees.email, input.email))
     .limit(1);
-  if (existingUser || existingTrainee) {
+  const [existingRegistration] = await db()
+    .select({ id: trainees.id })
+    .from(trainees)
+    .where(eq(trainees.registrationNumber, input.registrationNumber))
+    .limit(1);
+  if (existingUser || existingTraineeByEmail) {
     return { ok: false, error: "An account with this email already exists." };
+  }
+  if (existingRegistration) {
+    return { ok: false, error: "This registration number is already in use." };
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10);
@@ -64,6 +73,7 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
 
     await db().insert(trainees).values({
       userId: created.id,
+      registrationNumber: input.registrationNumber,
       fullName: input.fullName,
       email: input.email,
       phone: input.phone,

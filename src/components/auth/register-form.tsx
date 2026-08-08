@@ -58,6 +58,22 @@ export function RegisterForm() {
           autoComplete="email"
         />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="registrationNumber">Registration number</Label>
+        <Input
+          id="registrationNumber"
+          name="registrationNumber"
+          placeholder="e.g. OYA-2024-001"
+          required
+          minLength={3}
+          maxLength={30}
+          autoComplete="off"
+          autoCapitalize="characters"
+        />
+        <p className="text-xs text-muted-foreground">
+          Use the registration number you were issued with.
+        </p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Gender</Label>
