@@ -10,14 +10,23 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user;
       const { pathname } = request.nextUrl;
 
-      if (isLoggedIn && (pathname === "/login" || pathname === "/register" || pathname === "/admin/login")) {
+      if (
+        isLoggedIn &&
+        (pathname === "/login" ||
+          pathname === "/register" ||
+          pathname === "/admin/login" ||
+          pathname.startsWith("/forgot-password") ||
+          pathname.startsWith("/reset-password"))
+      ) {
         return Response.redirect(new URL("/", request.nextUrl));
       }
       if (
         pathname === "/" ||
         pathname.startsWith("/login") ||
         pathname.startsWith("/register") ||
-        pathname === "/admin/login"
+        pathname === "/admin/login" ||
+        pathname.startsWith("/forgot-password") ||
+        pathname.startsWith("/reset-password")
       ) {
         return true;
       }

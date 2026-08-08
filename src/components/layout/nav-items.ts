@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   GraduationCap,
+  IdCard,
   LayoutDashboard,
   Settings,
   UserCircle,
@@ -21,4 +22,5 @@ export const adminNavItems = [
 
 export const traineeNavItems = [
   { href: "/portal", label: "My dashboard", icon: UserCircle },
+  { href: "/profile", label: "Profile", icon: IdCard },
 ];

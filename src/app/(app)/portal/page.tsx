@@ -1,5 +1,5 @@
 import { and, eq, gte, lte } from "drizzle-orm";
-import { CalendarCheck2, GraduationCap, Trophy, User } from "lucide-react";
+import { CalendarCheck2, GraduationCap, Trophy } from "lucide-react";
 import { MonthCalendar } from "@/components/attendance/month-calendar";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
@@ -13,18 +13,9 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, attendance, trainees } from "@/db/schema";
-import { currentMonth, formatDate, monthRange } from "@/lib/date";
+import { currentMonth, monthRange } from "@/lib/date";
 
 export const metadata = { title: "My dashboard" };
-
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="break-words text-sm">{value || "—"}</p>
-    </div>
-  );
-}
 
 export default async function PortalPage({
   searchParams,
@@ -117,24 +108,6 @@ export default async function PortalPage({
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              Profile
-            </CardTitle>
-            <CardDescription>Your registration details.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name" value={trainee.fullName} />
-            <Field label="Registration number" value={trainee.registrationNumber} />
-            <Field label="Email" value={trainee.email} />
-            <Field label="Phone" value={trainee.phone} />
-            <Field label="Gender" value={trainee.gender} />
-            <Field label="Joined" value={formatDate(trainee.createdAt.toISOString())} />
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

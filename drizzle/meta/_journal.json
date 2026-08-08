@@ -15,6 +15,13 @@
       "when": 1786160760615,
       "tag": "0001_overrated_frog_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786163706180,
+      "tag": "0002_motionless_sauron",
+      "breakpoints": true
     }
   ]
 }

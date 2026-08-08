@@ -36,21 +36,21 @@ export default async function LoginPage({
             Account created. A trainer will confirm your registration before you can sign in.
           </p>
         ) : null}
-        <LoginForm />
-        <div className="mt-6 space-y-2 text-center text-xs text-muted-foreground">
-          <p>
-            New trainee?{" "}
-            <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
-              Create an account
-            </Link>
-          </p>
-          <p>
-            Staff or trainer?{" "}
-            <Link href="/admin/login" className="font-medium text-primary underline-offset-3 hover:underline">
-              Sign in here
-            </Link>
-          </p>
+        <div className="text-right">
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-primary underline-offset-3 hover:underline"
+          >
+            Forgot password?
+          </Link>
         </div>
+        <LoginForm />
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          New trainee?{" "}
+          <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
+            Create an account
+          </Link>
+        </p>
       </div>
     </main>
   );
