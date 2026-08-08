@@ -8,8 +8,9 @@ import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth-guard";
 import { isValidEmail, validatePassword } from "@/lib/validation";
 import { isValidTopic } from "@/lib/topics";
+import { sendAccountCredentialsEmail } from "@/lib/email";
 
-export type ActionResult = { ok: boolean; error?: string };
+export type ActionResult = { ok: boolean; error?: string; message?: string };
 
 function value(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -56,7 +57,21 @@ export async function createStaff(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "Could not create the staff account. Try again." };
   }
 
+  // Let the new staff member know their login details.
+  let sent = false;
+  try {
+    sent = await sendAccountCredentialsEmail(input.email, input.name, input.email, input.password);
+  } catch (error) {
+    console.error("Could not email staff credentials:", error);
+  }
+
   revalidatePath("/staff");
+  if (!sent) {
+    return {
+      ok: true,
+      message: "Account created, but the credentials email could not be sent. Share the password manually.",
+    };
+  }
   return { ok: true };
 }
 

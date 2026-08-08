@@ -42,7 +42,7 @@ export default async function AdminLoginPage({
             Forgot password?
           </Link>
         </div>
-        <LoginForm emailPlaceholder="admin@thrilled.com" buttonLabel="Sign in to dashboard" />
+        <LoginForm buttonLabel="Sign in to dashboard" />
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Are you a trainee?{" "}
           <Link href="/login" className="font-medium text-primary underline-offset-3 hover:underline">

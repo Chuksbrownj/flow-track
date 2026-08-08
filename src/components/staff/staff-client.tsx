@@ -85,11 +85,11 @@ export function StaffClient({
   const [resetTarget, setResetTarget] = useState<StaffRow | null>(null);
   const { pending, startTransition } = useBusy();
 
-  function run(action: () => Promise<{ ok: boolean; error?: string }>, onOk?: () => void) {
+  function run(action: () => Promise<{ ok: boolean; error?: string; message?: string }>, onOk?: () => void) {
     startTransition(async () => {
       const result = await action();
       if (result.ok) {
-        toast.success("Saved.");
+        toast.success(result.message ?? "Saved.");
         onOk?.();
       } else {
         toast.error(result.error ?? "Something went wrong.");
