@@ -79,7 +79,7 @@ All services used are free tier.
 3. Deploy. Database migrations run automatically as part of the build.
 4. Seed the initial admin account from your machine against the production database:
    ```bash
-   DATABASE_URL=<production-url> ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=<strong-password> ADMIN_NAME=Administrator npm run db:seed
+   DATABASE_URL=<production-url> ADMIN_EMAIL=admin@thrilled.com ADMIN_PASSWORD=<strong-password> ADMIN_NAME=Administrator npm run db:seed
    ```
 
 ### Neon (free tier)

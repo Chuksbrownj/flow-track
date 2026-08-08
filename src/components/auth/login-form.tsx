@@ -18,7 +18,7 @@ export function LoginForm() {
           id="email"
           name="email"
           type="email"
-          placeholder="admin@example.com"
+          placeholder="admin@thrilled.com"
           autoComplete="email"
           required
         />

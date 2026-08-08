@@ -14,7 +14,7 @@ try {
 }
 
 async function main() {
-  const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").toLowerCase().trim();
+  const email = (process.env.ADMIN_EMAIL ?? "admin@thrilled.com").toLowerCase().trim();
   const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME ?? "Administrator";
 
