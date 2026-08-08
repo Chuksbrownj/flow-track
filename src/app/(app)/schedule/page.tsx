@@ -1,12 +1,25 @@
-import { PagePlaceholder } from "@/components/app/page-placeholder";
+import { asc } from "drizzle-orm";
+import { ScheduleClient } from "@/components/schedule/schedule-client";
+import { db } from "@/db/client";
+import { trainingSchedule } from "@/db/schema";
 
 export const metadata = { title: "Training Schedule" };
 
-export default function SchedulePage() {
-  return (
-    <PagePlaceholder
-      title="Training Schedule"
-      description="Plan and manage training sessions."
-    />
-  );
+export default async function SchedulePage() {
+  const rows = await db()
+    .select()
+    .from(trainingSchedule)
+    .orderBy(asc(trainingSchedule.date), asc(trainingSchedule.startTime));
+
+  const sessions = rows.map((session) => ({
+    id: session.id,
+    title: session.title,
+    programme: session.programme,
+    date: session.date,
+    startTime: session.startTime,
+    endTime: session.endTime,
+    description: session.description,
+  }));
+
+  return <ScheduleClient initialSessions={sessions} />;
 }
