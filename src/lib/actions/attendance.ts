@@ -3,12 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { and, eq, ne } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
-import { attendance, trainees } from "@/db/schema";
+import { attendance, trainees, users } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth-guard";
 import { todayStr } from "@/lib/date";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
+export type ActionResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  /** True when the device is not registered and the account password is required. */
+  needsPassword?: boolean;
+};
 
 function validDate(value: string | undefined): string {
   if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -30,8 +37,15 @@ function isFingerprint(value: string): boolean {
  * Trainee self check-in. Binds the device fingerprint + IP on first use and
  * requires the same device fingerprint and IP on every later check-in.
  * Creates a "pending" attendance record that a trainer must confirm.
+ *
+ * If no fingerprint is registered yet (first device, or after a trainer reset),
+ * the trainee must verify with their account password before the device is
+ * bound and the check-in is recorded.
  */
-export async function checkInAttendance(fingerprint: string): Promise<ActionResult> {
+export async function checkInAttendance(
+  fingerprint: string,
+  password?: string
+): Promise<ActionResult> {
   const user = await requireUser();
   if (user.role !== "trainee") return { ok: false, error: "Only trainees can check in." };
 
@@ -50,7 +64,8 @@ export async function checkInAttendance(fingerprint: string): Promise<ActionResu
 
   const ip = await clientIp();
 
-  // First use of this device: register the fingerprint + IP against the trainee.
+  // Device has no registered fingerprint yet: require the account password to
+  // prove identity, then bind this device to the trainee.
   if (!trainee.deviceFingerprint) {
     const [holder] = await db()
       .select({ id: trainees.id })
@@ -60,6 +75,26 @@ export async function checkInAttendance(fingerprint: string): Promise<ActionResu
     if (holder) {
       return { ok: false, error: "This device is already registered to another trainee." };
     }
+
+    const provided = (password ?? "").trim();
+    if (!provided) {
+      return {
+        ok: false,
+        needsPassword: true,
+        error: "This device is not registered to your account. Sign in with your account password to register it and check in.",
+      };
+    }
+
+    const [userRow] = await db()
+      .select({ passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    if (!userRow) return { ok: false, error: "Account not found." };
+
+    const valid = await bcrypt.compare(provided, userRow.passwordHash);
+    if (!valid) return { ok: false, error: "Incorrect password." };
+
     try {
       await db()
         .update(trainees)
