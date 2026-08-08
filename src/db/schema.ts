@@ -87,3 +87,9 @@ export const assessmentsRelations = relations(assessments, ({ one }) => ({
     references: [trainees.id],
   }),
 }));
+
+export type User = typeof users.$inferSelect;
+export type Trainee = typeof trainees.$inferSelect;
+export type Attendance = typeof attendance.$inferSelect;
+export type Assessment = typeof assessments.$inferSelect;
+export type TrainingSession = typeof trainingSchedule.$inferSelect;
