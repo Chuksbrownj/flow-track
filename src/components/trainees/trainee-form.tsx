@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createTrainee, updateTrainee, type ActionResult } from "@/lib/actions/trainees";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export type TraineeRow = {
   id: string;
@@ -39,6 +40,7 @@ export function TraineeForm({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [gender, setGender] = useState(trainee?.gender ?? "");
+  const [masterPassword, setMasterPassword] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -48,11 +50,12 @@ export function TraineeForm({
       const result: ActionResult =
         mode === "create"
           ? await createTrainee(formData)
-          : await updateTrainee(trainee!.id, formData);
+          : await updateTrainee(trainee!.id, masterPassword, formData);
       if (result.ok) {
         onSuccess();
       } else {
         setError(result.error ?? "Something went wrong.");
+        setMasterPassword("");
       }
     });
   }
@@ -127,6 +130,22 @@ export function TraineeForm({
           defaultValue={trainee?.email ?? ""}
         />
       </div>
+      {mode === "edit" ? (
+        <div className="space-y-2">
+          <Label htmlFor="masterPassword">Master admin password</Label>
+          <PasswordInput
+            id="masterPassword"
+            value={masterPassword}
+            onChange={(event) => setMasterPassword(event.target.value)}
+            placeholder="Enter your password to confirm"
+            autoComplete="current-password"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            Changes only take effect after the master admin password is verified.
+          </p>
+        </div>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}

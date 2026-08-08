@@ -43,7 +43,14 @@ import { formatDate } from "@/lib/date";
 import { TraineeDetails } from "./trainee-details";
 import { TraineeForm, type TraineeRow } from "./trainee-form";
 
-export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRow[] }) {
+export function TraineesClient({
+  initialTrainees,
+  isAdmin,
+}: {
+  initialTrainees: TraineeRow[];
+  /** Only the master admin can edit a trainee's registration details. */
+  isAdmin: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
@@ -188,9 +195,11 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
                         <Button variant="ghost" size="icon" onClick={() => setViewTrainee(trainee)} aria-label="View details">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setEditTrainee(trainee)} aria-label="Edit trainee">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        {isAdmin ? (
+                          <Button variant="ghost" size="icon" onClick={() => setEditTrainee(trainee)} aria-label="Edit trainee">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                         {trainee.status === "pending" ? (
                           <Button
                             variant="ghost"
@@ -251,10 +260,12 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
                     <Eye className="h-4 w-4" />
                     View
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setEditTrainee(trainee)}>
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </Button>
+                  {isAdmin ? (
+                    <Button variant="outline" size="sm" onClick={() => setEditTrainee(trainee)}>
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </Button>
+                  ) : null}
                   {trainee.status === "pending" ? (
                     <Button
                       variant="outline"

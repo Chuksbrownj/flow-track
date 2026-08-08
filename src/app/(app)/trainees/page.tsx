@@ -7,7 +7,7 @@ import { trainees } from "@/db/schema";
 export const metadata = { title: "Trainees" };
 
 export default async function TraineesPage() {
-  await requireStaff();
+  const user = await requireStaff();
   const rows = await db().select().from(trainees).orderBy(asc(trainees.createdAt));
 
   const traineeList = rows.map((trainee) => ({
@@ -22,5 +22,5 @@ export default async function TraineesPage() {
     hasDevice: !!trainee.deviceFingerprint,
   }));
 
-  return <TraineesClient initialTrainees={traineeList} />;
+  return <TraineesClient initialTrainees={traineeList} isAdmin={user.role === "admin"} />;
 }

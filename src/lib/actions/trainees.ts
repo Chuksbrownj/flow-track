@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
-import { trainees } from "@/db/schema";
-import { requireStaff } from "@/lib/auth-guard";
+import { trainees, users } from "@/db/schema";
+import { requireAdmin, requireStaff } from "@/lib/auth-guard";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { isUuid, validateTrainee } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -55,9 +57,38 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function updateTrainee(id: string, formData: FormData): Promise<ActionResult> {
-  await requireStaff();
+export async function updateTrainee(
+  id: string,
+  masterPassword: string,
+  formData: FormData
+): Promise<ActionResult> {
+  // Only the master admin can change a trainee's registration details, and
+  // every change must be confirmed with the master admin's password.
+  const admin = await requireAdmin();
   if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
+
+  // Throttle password attempts on this sensitive action.
+  const [byUser, byIp] = await Promise.all([
+    rateLimit(`admin-edit:user:${admin.id}`, 10, 15 * 60 * 1000),
+    rateLimit(`admin-edit:ip:${await clientIp()}`, 30, 15 * 60 * 1000),
+  ]);
+  if (!byUser.ok || !byIp.ok) {
+    return { ok: false, error: "Too many attempts. Try again in a few minutes." };
+  }
+
+  if (!masterPassword) {
+    return { ok: false, error: "Enter the master admin password to confirm these changes." };
+  }
+
+  const [adminRow] = await db()
+    .select({ passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, admin.id))
+    .limit(1);
+  if (!adminRow) return { ok: false, error: "Could not verify your password. Try again." };
+
+  const valid = await bcrypt.compare(masterPassword, adminRow.passwordHash);
+  if (!valid) return { ok: false, error: "Incorrect master admin password. Changes were not saved." };
 
   const input = {
     registrationNumber: value(formData, "registrationNumber"),
