@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { navItems } from "./nav-items";
+import { adminNavItems, traineeNavItems } from "./nav-items";
 
-export function SidebarNav() {
+export function SidebarNav({ role }: { role: string }) {
   const pathname = usePathname();
+  const items = role === "admin" ? adminNavItems : traineeNavItems;
 
   return (
     <nav className="flex flex-col gap-1">
-      {navItems.map((item) => {
+      {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link

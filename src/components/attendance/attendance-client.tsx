@@ -24,12 +24,19 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { markAttendance } from "@/lib/actions/attendance";
-import { todayStr } from "@/lib/date";
+import { MonthCalendar, type CalendarRecord } from "./month-calendar";
 
 export type TraineeOption = {
   id: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
   fullName: string;
 };
 
@@ -38,7 +45,13 @@ export type AttendanceRecord = {
   traineeId: string;
   status: string;
   traineeName: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
+};
+
+export type MonthRecord = {
+  traineeId: string;
+  date: string;
+  status: string;
 };
 
 function Stat({
@@ -62,16 +75,24 @@ function Stat({
 
 export function AttendanceClient({
   date,
+  month,
   trainees,
   initialRecords,
+  monthRecords,
 }: {
   date: string;
+  month: string;
   trainees: TraineeOption[];
   initialRecords: AttendanceRecord[];
+  monthRecords: MonthRecord[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [records, setRecords] = useState(initialRecords);
+  const [monthState, setMonthState] = useState<MonthRecord[]>(monthRecords);
+  const [selectedTraineeId, setSelectedTraineeId] = useState<string | null>(
+    trainees[0]?.id ?? null
+  );
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -82,7 +103,7 @@ export function AttendanceClient({
       .filter(
         (t) =>
           t.fullName.toLowerCase().includes(q) ||
-          t.registrationNumber.toLowerCase().includes(q)
+          (t.registrationNumber?.toLowerCase().includes(q) ?? false)
       )
       .slice(0, 8);
   }, [trainees, query]);
@@ -91,6 +112,15 @@ export function AttendanceClient({
   const absent = records.filter((r) => r.status === "absent").length;
   const total = present + absent;
   const percentage = total === 0 ? 0 : Math.round((present / total) * 100);
+
+  const selectedTrainee = trainees.find((t) => t.id === selectedTraineeId) ?? null;
+  const selectedTraineeCalendar: CalendarRecord[] = useMemo(
+    () =>
+      monthState
+        .filter((r) => r.traineeId === selectedTraineeId)
+        .map((r) => ({ date: r.date, status: r.status })),
+    [monthState, selectedTraineeId]
+  );
 
   function applyRecord(traineeId: string, status: "present" | "absent") {
     const trainee = trainees.find((t) => t.id === traineeId);
@@ -106,9 +136,18 @@ export function AttendanceClient({
           traineeId,
           status,
           traineeName: trainee?.fullName ?? "",
-          registrationNumber: trainee?.registrationNumber ?? "",
+          registrationNumber: trainee?.registrationNumber ?? null,
         },
       ];
+    });
+    setMonthState((prev) => {
+      const existing = prev.find((r) => r.traineeId === traineeId && r.date === date);
+      if (existing) {
+        return prev.map((r) =>
+          r.traineeId === traineeId && r.date === date ? { ...r, status } : r
+        );
+      }
+      return [...prev, { traineeId, date, status }];
     });
   }
 
@@ -128,7 +167,7 @@ export function AttendanceClient({
 
   function changeDate(next: string) {
     if (!next) return;
-    router.push(next === todayStr() ? "/attendance" : `/attendance?date=${next}`);
+    router.push(`/attendance?date=${next}&month=${month}`);
   }
 
   return (
@@ -176,7 +215,6 @@ export function AttendanceClient({
                 placeholder="Search trainees..."
                 className="pl-9"
                 aria-label="Search trainees"
-                autoFocus
               />
             </div>
 
@@ -196,7 +234,7 @@ export function AttendanceClient({
                   {query.trim()
                     ? "Try a different name or registration number."
                     : trainees.length === 0
-                      ? "Add trainees in the Trainees module first."
+                      ? "Approve pending signups in the Trainees module first."
                       : "Results will appear here as you type."}
                 </p>
               </div>
@@ -212,7 +250,7 @@ export function AttendanceClient({
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{t.fullName}</p>
-                        <p className="text-xs text-muted-foreground">{t.registrationNumber}</p>
+                        <p className="text-xs text-muted-foreground">{t.registrationNumber ?? "—"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         {current ? <StatusBadge status={current} /> : null}
@@ -278,7 +316,9 @@ export function AttendanceClient({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{record.traineeName}</p>
-                      <p className="text-xs text-muted-foreground">{record.registrationNumber}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {record.registrationNumber ?? "—"}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={record.status} />
@@ -310,6 +350,86 @@ export function AttendanceClient({
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Month overview</CardTitle>
+            <CardDescription>Present and absent counts per day. Click a day to view it.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MonthCalendar
+              month={month}
+              records={monthState}
+              mode="overall"
+              query={{ date }}
+              selectedDate={date}
+              onSelectDay={changeDate}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Trainee calendar</CardTitle>
+            <CardDescription>See one trainee&apos;s attendance across the month.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select value={selectedTraineeId ?? undefined} onValueChange={setSelectedTraineeId}>
+              <SelectTrigger className="w-full" aria-label="Select trainee">
+                <SelectValue placeholder="Select trainee" />
+              </SelectTrigger>
+              <SelectContent>
+                {trainees.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedTrainee ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{selectedTrainee.fullName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedTrainee.registrationNumber ?? "—"} · {date}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-primary"
+                    disabled={pendingId === selectedTrainee.id}
+                    onClick={() => handleMark(selectedTrainee.id, "present")}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Present
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive"
+                    disabled={pendingId === selectedTrainee.id}
+                    onClick={() => handleMark(selectedTrainee.id, "absent")}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Absent
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <MonthCalendar
+              month={month}
+              records={selectedTraineeCalendar}
+              mode="trainee"
+              query={{ date }}
+            />
           </CardContent>
         </Card>
       </div>

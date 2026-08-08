@@ -27,7 +27,7 @@ type ScoreKey = (typeof CATEGORIES)[number]["key"];
 
 export type TraineeRow = {
   id: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
   fullName: string;
   status: string;
 };
@@ -91,7 +91,7 @@ export function AssessmentsClient({
     return trainees.filter(
       (t) =>
         t.fullName.toLowerCase().includes(q) ||
-        t.registrationNumber.toLowerCase().includes(q)
+        (t.registrationNumber?.toLowerCase().includes(q) ?? false)
     );
   }, [trainees, query]);
 
@@ -208,7 +208,7 @@ export function AssessmentsClient({
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{trainee.fullName}</p>
                           <p className="text-xs text-muted-foreground">
-                            {trainee.registrationNumber}
+                            {trainee.registrationNumber ?? "—"}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">

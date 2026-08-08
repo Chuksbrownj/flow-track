@@ -20,7 +20,10 @@ export const users = pgTable("users", {
 
 export const trainees = pgTable("trainees", {
   id: uuid("id").defaultRandom().primaryKey(),
-  registrationNumber: text("registration_number").notNull().unique(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "set null" })
+    .unique(),
+  registrationNumber: text("registration_number").unique(),
   fullName: text("full_name").notNull(),
   gender: text("gender").notNull(),
   phone: text("phone").notNull(),

@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, ne } from "drizzle-orm";
 import { AssessmentsClient } from "@/components/assessments/assessments-client";
 import { db } from "@/db/client";
 import { assessments, trainees } from "@/db/schema";
@@ -17,6 +17,7 @@ export default async function AssessmentsPage() {
         status: trainees.status,
       })
       .from(trainees)
+      .where(ne(trainees.status, "pending"))
       .orderBy(asc(trainees.fullName)),
     database
       .select({

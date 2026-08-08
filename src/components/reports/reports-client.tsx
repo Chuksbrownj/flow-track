@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 
 export type TraineeReportRow = {
-  registrationNumber: string;
+  registrationNumber: string | null;
   fullName: string;
   gender: string;
   phone: string;
@@ -22,13 +22,13 @@ export type TraineeReportRow = {
 export type AttendanceReportRow = {
   date: string;
   traineeName: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
   status: string;
 };
 
 export type AssessmentReportRow = {
   traineeName: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
   graphicDesign: number | null;
   animation: number | null;
   dataAnalysis: number | null;
@@ -115,6 +115,7 @@ export function ReportsClient({
     total: number;
     active: number;
     inactive: number;
+    pending: number;
     genders: { gender: string; count: number }[];
   };
   attendanceStats: { present: number; absent: number; rate: number | null };
@@ -201,9 +202,10 @@ export function ReportsClient({
           onExport={exportTrainees}
           disabled={traineeStats.total === 0}
         >
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Total" value={traineeStats.total} />
             <Stat label="Active" value={traineeStats.active} />
+            <Stat label="Pending" value={traineeStats.pending} />
             <Stat label="Inactive" value={traineeStats.inactive} />
           </div>
           <div className="mt-4 space-y-3">

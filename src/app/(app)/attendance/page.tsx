@@ -1,22 +1,29 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { AttendanceClient } from "@/components/attendance/attendance-client";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
-import { todayStr } from "@/lib/date";
+import { currentMonth, monthRange, todayStr } from "@/lib/date";
 
 export const metadata = { title: "Attendance" };
+
+function validMonth(value: string | undefined): string {
+  if (value && /^\d{4}-\d{2}$/.test(value)) return value;
+  return currentMonth();
+}
 
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; month?: string }>;
 }) {
-  const { date } = await searchParams;
+  const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
+  const monthParam = validMonth(month);
+  const { start: monthStart, end: monthEnd } = monthRange(monthParam);
 
   const database = db();
 
-  const [traineeRows, recordRows] = await Promise.all([
+  const [traineeRows, recordRows, monthRows] = await Promise.all([
     database
       .select({
         id: trainees.id,
@@ -36,12 +43,21 @@ export default async function AttendancePage({
       .from(attendance)
       .innerJoin(trainees, eq(attendance.traineeId, trainees.id))
       .where(eq(attendance.date, day)),
+    database
+      .select({
+        traineeId: attendance.traineeId,
+        date: attendance.date,
+        status: attendance.status,
+      })
+      .from(attendance)
+      .where(and(gte(attendance.date, monthStart), lte(attendance.date, monthEnd))),
   ]);
 
   return (
     <AttendanceClient
-      key={day}
+      key={`${day}-${monthParam}`}
       date={day}
+      month={monthParam}
       trainees={traineeRows}
       initialRecords={recordRows.map((row) => ({
         id: row.traineeId,
@@ -49,6 +65,11 @@ export default async function AttendancePage({
         status: row.status,
         traineeName: row.traineeName,
         registrationNumber: row.registrationNumber,
+      }))}
+      monthRecords={monthRows.map((row) => ({
+        traineeId: row.traineeId,
+        date: row.date,
+        status: row.status,
       }))}
     />
   );

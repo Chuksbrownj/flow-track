@@ -16,7 +16,7 @@ import { createTrainee, updateTrainee, type ActionResult } from "@/lib/actions/t
 
 export type TraineeRow = {
   id: string;
-  registrationNumber: string;
+  registrationNumber: string | null;
   fullName: string;
   gender: string;
   phone: string;
@@ -64,11 +64,16 @@ export function TraineeForm({
           id="registrationNumber"
           name="registrationNumber"
           placeholder="e.g. OYA-0001"
-          defaultValue={trainee?.registrationNumber}
-          required
+          defaultValue={trainee?.registrationNumber ?? ""}
+          required={mode === "create" || trainee?.status !== "pending"}
           minLength={3}
           maxLength={30}
         />
+        {trainee?.status === "pending" ? (
+          <p className="text-xs text-muted-foreground">
+            Assigned automatically when this trainee is approved.
+          </p>
+        ) : null}
       </div>
       <div className="space-y-2">
         <Label htmlFor="fullName">Full name</Label>

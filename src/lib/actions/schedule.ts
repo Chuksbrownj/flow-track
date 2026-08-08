@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { trainingSchedule } from "@/db/schema";
-import { requireUser } from "@/lib/auth-guard";
+import { requireAdmin } from "@/lib/auth-guard";
 import { validateSchedule } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -14,7 +14,7 @@ function value(formData: FormData, key: string): string {
 }
 
 export async function createSession(formData: FormData): Promise<ActionResult> {
-  await requireUser();
+  await requireAdmin();
 
   const input = {
     title: value(formData, "title"),
@@ -47,7 +47,7 @@ export async function createSession(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateSession(id: string, formData: FormData): Promise<ActionResult> {
-  await requireUser();
+  await requireAdmin();
 
   const input = {
     title: value(formData, "title"),
@@ -83,7 +83,7 @@ export async function updateSession(id: string, formData: FormData): Promise<Act
 }
 
 export async function deleteSession(id: string): Promise<ActionResult> {
-  await requireUser();
+  await requireAdmin();
 
   try {
     await db().delete(trainingSchedule).where(eq(trainingSchedule.id, id));

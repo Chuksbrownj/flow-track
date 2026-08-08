@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
@@ -7,11 +8,11 @@ export const metadata = { title: "Sign in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ changed?: string }>;
+  searchParams: Promise<{ changed?: string; registered?: string }>;
 }) {
   const session = await auth();
-  const { changed } = await searchParams;
-  if (session?.user) redirect("/dashboard");
+  const { changed, registered } = await searchParams;
+  if (session?.user) redirect(session.user.role === "admin" ? "/dashboard" : "/portal");
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-white to-secondary/70 p-4">
@@ -30,9 +31,17 @@ export default async function LoginPage({
             Password updated successfully. Please sign in with your new password.
           </p>
         ) : null}
+        {registered ? (
+          <p className="mb-4 rounded-md border border-gold/40 bg-gold/10 px-3 py-2 text-center text-sm text-gold-foreground">
+            Account created. A trainer will confirm your registration before you can sign in.
+          </p>
+        ) : null}
         <LoginForm />
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Authorized personnel only.
+          New trainee?{" "}
+          <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
+            Create an account
+          </Link>
         </p>
       </div>
     </main>

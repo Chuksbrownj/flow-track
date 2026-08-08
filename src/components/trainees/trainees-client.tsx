@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Eye, Pencil, Plus, Search, UserCheck, UserX, Users } from "lucide-react";
+import { CheckCheck, Eye, Loader2, Pencil, Plus, Search, UserCheck, UserX, Users } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/app/status-badge";
-import { setTraineeStatus } from "@/lib/actions/trainees";
+import { approveTrainee, setTraineeStatus } from "@/lib/actions/trainees";
 import { formatDate } from "@/lib/date";
 import { TraineeDetails } from "./trainee-details";
 import { TraineeForm, type TraineeRow } from "./trainee-form";
@@ -50,6 +50,7 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
   const [editTrainee, setEditTrainee] = useState<TraineeRow | null>(null);
   const [viewTrainee, setViewTrainee] = useState<TraineeRow | null>(null);
   const [statusTarget, setStatusTarget] = useState<TraineeRow | null>(null);
+  const [approveId, setApproveId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -60,10 +61,23 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
       const matchesQuery =
         !q ||
         trainee.fullName.toLowerCase().includes(q) ||
-        trainee.registrationNumber.toLowerCase().includes(q);
+        (trainee.registrationNumber?.toLowerCase().includes(q) ?? false);
       return matchesStatus && matchesQuery;
     });
   }, [initialTrainees, query, statusFilter]);
+
+  function handleApprove(trainee: TraineeRow) {
+    setApproveId(trainee.id);
+    startTransition(async () => {
+      const result = await approveTrainee(trainee.id);
+      setApproveId(null);
+      if (result.ok) {
+        toast.success(`${trainee.fullName} approved.`);
+      } else {
+        toast.error(result.error ?? "Something went wrong.");
+      }
+    });
+  }
 
   function toggleStatus(trainee: TraineeRow) {
     const next = trainee.status === "active" ? "inactive" : "active";
@@ -110,6 +124,7 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
@@ -158,7 +173,7 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
               <TableBody>
                 {filtered.map((trainee) => (
                   <TableRow key={trainee.id}>
-                    <TableCell className="font-medium">{trainee.registrationNumber}</TableCell>
+                    <TableCell className="font-medium">{trainee.registrationNumber ?? "—"}</TableCell>
                     <TableCell>{trainee.fullName}</TableCell>
                     <TableCell>{trainee.gender}</TableCell>
                     <TableCell>{trainee.phone}</TableCell>
@@ -176,18 +191,35 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
                         <Button variant="ghost" size="icon" onClick={() => setEditTrainee(trainee)} aria-label="Edit trainee">
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setStatusTarget(trainee)}
-                          aria-label={trainee.status === "active" ? "Deactivate trainee" : "Activate trainee"}
-                        >
-                          {trainee.status === "active" ? (
-                            <UserX className="h-4 w-4 text-destructive" />
-                          ) : (
-                            <UserCheck className="h-4 w-4 text-primary" />
-                          )}
-                        </Button>
+                        {trainee.status === "pending" ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-primary"
+                            onClick={() => handleApprove(trainee)}
+                            disabled={approveId === trainee.id}
+                            aria-label="Approve trainee"
+                          >
+                            {approveId === trainee.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <CheckCheck className="h-4 w-4" />
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setStatusTarget(trainee)}
+                            aria-label={trainee.status === "active" ? "Deactivate trainee" : "Activate trainee"}
+                          >
+                            {trainee.status === "active" ? (
+                              <UserX className="h-4 w-4 text-destructive" />
+                            ) : (
+                              <UserCheck className="h-4 w-4 text-primary" />
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -202,7 +234,7 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{trainee.fullName}</p>
-                    <p className="text-xs text-muted-foreground">{trainee.registrationNumber}</p>
+                    <p className="text-xs text-muted-foreground">{trainee.registrationNumber ?? "—"}</p>
                   </div>
                   <StatusBadge status={trainee.status} />
                 </div>
@@ -223,15 +255,32 @@ export function TraineesClient({ initialTrainees }: { initialTrainees: TraineeRo
                     <Pencil className="h-4 w-4" />
                     Edit
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setStatusTarget(trainee)}
-                    className={trainee.status === "active" ? "text-destructive" : "text-primary"}
-                  >
-                    {trainee.status === "active" ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                    {trainee.status === "active" ? "Deactivate" : "Activate"}
-                  </Button>
+                  {trainee.status === "pending" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-primary"
+                      onClick={() => handleApprove(trainee)}
+                      disabled={approveId === trainee.id}
+                    >
+                      {approveId === trainee.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCheck className="h-4 w-4" />
+                      )}
+                      Approve
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStatusTarget(trainee)}
+                      className={trainee.status === "active" ? "text-destructive" : "text-primary"}
+                    >
+                      {trainee.status === "active" ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                      {trainee.status === "active" ? "Deactivate" : "Activate"}
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

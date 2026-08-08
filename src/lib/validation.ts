@@ -34,6 +34,27 @@ export function validatePassword(password: string) {
   return null;
 }
 
+export function validateSignup(input: {
+  fullName: string;
+  email: string;
+  phone: string;
+  gender: string;
+  password: string;
+}) {
+  if (!input.fullName || input.fullName.length < 3)
+    return "Full name is required (at least 3 characters).";
+  if (!isValidEmail(input.email)) return "Please enter a valid email address.";
+  if (!["Male", "Female"].includes(input.gender)) return "Please choose a valid gender.";
+  if (
+    !input.phone ||
+    input.phone.length < 7 ||
+    input.phone.length > 20 ||
+    !PHONE_PATTERN.test(input.phone)
+  )
+    return "Please enter a valid phone number.";
+  return validatePassword(input.password);
+}
+
 export function validateScore(value: number) {
   if (Number.isNaN(value) || value < 0 || value > 100) return "Scores must be between 0 and 100.";
   return null;

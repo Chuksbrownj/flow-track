@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
-import { requireUser } from "@/lib/auth-guard";
+import { requireAdmin } from "@/lib/auth-guard";
 import { todayStr } from "@/lib/date";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -19,7 +19,7 @@ export async function markAttendance(
   status: "present" | "absent",
   date?: string
 ): Promise<ActionResult> {
-  await requireUser();
+  await requireAdmin();
 
   if (status !== "present" && status !== "absent") {
     return { ok: false, error: "Invalid status." };
@@ -54,5 +54,6 @@ export async function markAttendance(
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
+  revalidatePath("/portal");
   return { ok: true };
 }

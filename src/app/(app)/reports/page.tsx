@@ -22,6 +22,7 @@ export default async function ReportsPage() {
     totalTrainees,
     activeTrainees,
     inactiveTrainees,
+    pendingTrainees,
     genderRows,
     presentCount,
     absentCount,
@@ -33,6 +34,7 @@ export default async function ReportsPage() {
     database.select({ value: count() }).from(trainees),
     database.select({ value: count() }).from(trainees).where(eq(trainees.status, "active")),
     database.select({ value: count() }).from(trainees).where(eq(trainees.status, "inactive")),
+    database.select({ value: count() }).from(trainees).where(eq(trainees.status, "pending")),
     database
       .select({ gender: trainees.gender, value: count() })
       .from(trainees)
@@ -93,6 +95,7 @@ export default async function ReportsPage() {
         total: totalTrainees[0]?.value ?? 0,
         active: activeTrainees[0]?.value ?? 0,
         inactive: inactiveTrainees[0]?.value ?? 0,
+        pending: pendingTrainees[0]?.value ?? 0,
         genders: genderRows.map((row) => ({ gender: row.gender, count: row.value })),
       }}
       attendanceStats={{

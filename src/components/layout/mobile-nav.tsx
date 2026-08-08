@@ -12,7 +12,7 @@ import {
 import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 
-export function MobileNav() {
+export function MobileNav({ role }: { role: string }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -27,7 +27,7 @@ export function MobileNav() {
           </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-3">
-          <SidebarNav />
+          <SidebarNav role={role} />
         </div>
       </SheetContent>
     </Sheet>

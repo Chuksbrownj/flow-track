@@ -4,14 +4,78 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { signOut } from "@/auth";
 import { db } from "@/db/client";
-import { users } from "@/db/schema";
+import { trainees, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
-import { validatePassword } from "@/lib/validation";
+import { validatePassword, validateSignup } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
 
+function value(formData: FormData, key: string): string {
+  return String(formData.get(key) ?? "").trim();
+}
+
 export async function logout() {
   await signOut({ redirectTo: "/login" });
+}
+
+export async function registerTrainee(formData: FormData): Promise<ActionResult> {
+  const input = {
+    fullName: value(formData, "fullName"),
+    email: value(formData, "email").toLowerCase(),
+    phone: value(formData, "phone"),
+    gender: value(formData, "gender"),
+    password: String(formData.get("password") ?? ""),
+  };
+  const confirm = String(formData.get("confirmPassword") ?? "");
+
+  const error = validateSignup(input);
+  if (error) return { ok: false, error };
+  if (input.password !== confirm) return { ok: false, error: "Passwords do not match." };
+
+  const [existingUser] = await db()
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
+  const [existingTrainee] = await db()
+    .select({ id: trainees.id })
+    .from(trainees)
+    .where(eq(trainees.email, input.email))
+    .limit(1);
+  if (existingUser || existingTrainee) {
+    return { ok: false, error: "An account with this email already exists." };
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, 10);
+  let createdUserId: string | null = null;
+  try {
+    const [created] = await db()
+      .insert(users)
+      .values({
+        name: input.fullName,
+        email: input.email,
+        passwordHash,
+        role: "trainee",
+      })
+      .returning({ id: users.id });
+    createdUserId = created.id;
+
+    await db().insert(trainees).values({
+      userId: created.id,
+      fullName: input.fullName,
+      email: input.email,
+      phone: input.phone,
+      gender: input.gender,
+      status: "pending",
+    });
+  } catch {
+    if (createdUserId) {
+      await db().delete(users).where(eq(users.id, createdUserId)).catch(() => {});
+    }
+    return { ok: false, error: "Could not create your account. Try again." };
+  }
+
+  return { ok: true };
 }
 
 export async function changePassword(formData: FormData): Promise<ActionResult> {
