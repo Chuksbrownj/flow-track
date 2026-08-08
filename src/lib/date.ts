@@ -77,6 +77,18 @@ export function formatTime(t: string | null | undefined) {
   return `${hour12}:${String(m).padStart(2, "0")}${period}`;
 }
 
+export function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export function formatLongDate(date = new Date()) {
   return date.toLocaleDateString("en-GB", {
     weekday: "long",

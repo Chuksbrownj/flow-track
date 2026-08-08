@@ -132,6 +132,20 @@ export const examSubmissions = pgTable(
   (t) => [uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId)]
 );
 
+export const traineeChangeLogs = pgTable("trainee_change_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  traineeId: uuid("trainee_id")
+    .notNull()
+    .references(() => trainees.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorName: text("actor_name"),
+  action: text("action").notNull(),
+  field: text("field"),
+  before: text("before"),
+  after: text("after"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const rateLimits = pgTable("rate_limits", {
   key: text("key").primaryKey(),
   count: integer("count").notNull().default(0),

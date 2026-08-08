@@ -9,6 +9,7 @@ import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { attendanceEditable, isCheckinOpen, todayStr } from "@/lib/date";
 import { isUuid } from "@/lib/validation";
 import { clientIp } from "@/lib/rate-limit";
+import { recordTraineeChange } from "@/lib/trainee-logs";
 
 export type ActionResult = {
   ok: boolean;
@@ -197,7 +198,7 @@ export async function confirmAttendance(
  * Trainer reset of a trainee's device binding (e.g. lost device / network change).
  */
 export async function resetDeviceBinding(traineeId: string): Promise<ActionResult> {
-  await requireStaff();
+  const staff = await requireStaff();
   if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
   try {
     await db()
@@ -207,6 +208,14 @@ export async function resetDeviceBinding(traineeId: string): Promise<ActionResul
   } catch {
     return { ok: false, error: "Could not reset the device binding. Try again." };
   }
+
+  await recordTraineeChange({
+    traineeId,
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    action: "device_reset",
+  });
+
   revalidatePath("/attendance");
   revalidatePath("/trainees");
   return { ok: true };

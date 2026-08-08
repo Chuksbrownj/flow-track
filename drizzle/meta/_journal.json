@@ -43,6 +43,13 @@
       "when": 1786177770064,
       "tag": "0005_blue_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786179508736,
+      "tag": "0006_striped_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

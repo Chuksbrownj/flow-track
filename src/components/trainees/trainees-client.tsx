@@ -1,8 +1,20 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCheck, Eye, Loader2, Pencil, Plus, Search, UserCheck, UserX, Users } from "lucide-react";
+import {
+  CheckCheck,
+  Eye,
+  History,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  UserCheck,
+  UserX,
+  Users,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,17 +51,21 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/app/status-badge";
 import { approveTrainee, setTraineeStatus } from "@/lib/actions/trainees";
-import { formatDate } from "@/lib/date";
+import { describeTraineeChange, type TraineeLogRow } from "@/lib/trainee-logs";
+import { formatDate, formatDateTime } from "@/lib/date";
 import { TraineeDetails } from "./trainee-details";
 import { TraineeForm, type TraineeRow } from "./trainee-form";
 
 export function TraineesClient({
   initialTrainees,
   isAdmin,
+  changeLogs,
 }: {
   initialTrainees: TraineeRow[];
   /** Only the master admin can edit a trainee's registration details. */
   isAdmin: boolean;
+  /** Change history for trainee details (master admin only). */
+  changeLogs: TraineeLogRow[];
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -58,6 +74,7 @@ export function TraineesClient({
   const [viewTrainee, setViewTrainee] = useState<TraineeRow | null>(null);
   const [statusTarget, setStatusTarget] = useState<TraineeRow | null>(null);
   const [approveId, setApproveId] = useState<string | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -73,6 +90,8 @@ export function TraineesClient({
     });
   }, [initialTrainees, query, statusFilter]);
 
+  const router = useRouter();
+
   function handleApprove(trainee: TraineeRow) {
     setApproveId(trainee.id);
     startTransition(async () => {
@@ -80,6 +99,7 @@ export function TraineesClient({
       setApproveId(null);
       if (result.ok) {
         toast.success(`${trainee.fullName} approved.`);
+        router.refresh();
       } else {
         toast.error(result.error ?? "Something went wrong.");
       }
@@ -93,6 +113,7 @@ export function TraineesClient({
       if (result.ok) {
         toast.success(next === "active" ? `${trainee.fullName} activated.` : `${trainee.fullName} deactivated.`);
         setStatusTarget(null);
+        router.refresh();
       } else {
         toast.error(result.error ?? "Something went wrong.");
       }
@@ -108,10 +129,18 @@ export function TraineesClient({
             {initialTrainees.length} registered
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add trainee
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Button variant="outline" onClick={() => setLogsOpen(true)} className="gap-1.5">
+              <History className="h-4 w-4" />
+              Change history
+            </Button>
+          ) : null}
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add trainee
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -310,6 +339,7 @@ export function TraineesClient({
             onSuccess={() => {
               setAddOpen(false);
               toast.success("Trainee added.");
+              router.refresh();
             }}
             onCancel={() => setAddOpen(false)}
           />
@@ -323,16 +353,56 @@ export function TraineesClient({
             <DialogDescription>Update the trainee&apos;s details.</DialogDescription>
           </DialogHeader>
           {editTrainee ? (
-            <TraineeForm
-              mode="edit"
-              trainee={editTrainee}
-              onSuccess={() => {
-                setEditTrainee(null);
-                toast.success("Trainee updated.");
-              }}
-              onCancel={() => setEditTrainee(null)}
-            />
+          <TraineeForm
+            mode="edit"
+            trainee={editTrainee}
+            onSuccess={() => {
+              setEditTrainee(null);
+              toast.success("Trainee updated.");
+              router.refresh();
+            }}
+            onCancel={() => setEditTrainee(null)}
+          />
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={logsOpen} onOpenChange={setLogsOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Change history</DialogTitle>
+            <DialogDescription>
+              Changes made to trainees&apos; details. Entries are kept for 5 days and then cleared
+              automatically.
+            </DialogDescription>
+          </DialogHeader>
+          {changeLogs.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No changes recorded yet.
+            </div>
+          ) : (
+            <ul className="max-h-96 divide-y overflow-y-auto">
+              {changeLogs.map((log) => (
+                <li key={log.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {log.traineeName}
+                      {log.registrationNumber ? (
+                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                          {log.registrationNumber}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{describeTraineeChange(log)}</p>
+                  </div>
+                  <div className="shrink-0 text-left text-xs text-muted-foreground sm:text-right">
+                    <p>{formatDateTime(log.createdAt)}</p>
+                    {log.actorName ? <p>by {log.actorName}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </DialogContent>
       </Dialog>
 

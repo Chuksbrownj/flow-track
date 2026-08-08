@@ -7,6 +7,7 @@ import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
 import { requireAdmin, requireStaff } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { recordTraineeChange } from "@/lib/trainee-logs";
 import { isUuid, validateTrainee } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -16,7 +17,7 @@ function value(formData: FormData, key: string): string {
 }
 
 export async function createTrainee(formData: FormData): Promise<ActionResult> {
-  await requireStaff();
+  const staff = await requireStaff();
 
   const input = {
     registrationNumber: value(formData, "registrationNumber"),
@@ -39,17 +40,31 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "A trainee with this registration number already exists." };
   }
 
+  let createdId: string | null = null;
   try {
-    await db().insert(trainees).values({
-      registrationNumber,
-      fullName: input.fullName,
-      gender: input.gender,
-      phone: input.phone,
-      email: input.email || null,
-      status: "active",
-    });
+    const [created] = await db()
+      .insert(trainees)
+      .values({
+        registrationNumber,
+        fullName: input.fullName,
+        gender: input.gender,
+        phone: input.phone,
+        email: input.email || null,
+        status: "active",
+      })
+      .returning({ id: trainees.id });
+    createdId = created.id;
   } catch {
     return { ok: false, error: "Could not add the trainee. Try again." };
+  }
+
+  if (createdId) {
+    await recordTraineeChange({
+      traineeId: createdId,
+      actorId: staff.id,
+      actorName: staff.name ?? null,
+      action: "created",
+    });
   }
 
   revalidatePath("/trainees");
@@ -99,11 +114,7 @@ export async function updateTrainee(
   };
 
   const [existing] = await db()
-    .select({
-      id: trainees.id,
-      status: trainees.status,
-      registrationNumber: trainees.registrationNumber,
-    })
+    .select()
     .from(trainees)
     .where(eq(trainees.id, id))
     .limit(1);
@@ -146,6 +157,33 @@ export async function updateTrainee(
     return { ok: false, error: "Could not update the trainee. Try again." };
   }
 
+  // Log each changed field so the history shows exactly what changed and when.
+  const changes: { field: string; before: string | null; after: string | null }[] = [
+    {
+      field: "registrationNumber",
+      before: existing.registrationNumber,
+      after: registrationNumber,
+    },
+    { field: "fullName", before: existing.fullName, after: input.fullName },
+    { field: "gender", before: existing.gender, after: input.gender },
+    { field: "phone", before: existing.phone, after: input.phone },
+    { field: "email", before: existing.email, after: input.email || null },
+  ].filter((change) => change.before !== change.after);
+
+  await Promise.all(
+    changes.map((change) =>
+      recordTraineeChange({
+        traineeId: id,
+        actorId: admin.id,
+        actorName: admin.name ?? null,
+        action: "updated",
+        field: change.field,
+        before: change.before,
+        after: change.after,
+      })
+    )
+  );
+
   revalidatePath("/trainees");
   revalidatePath("/dashboard");
   revalidatePath("/portal");
@@ -156,12 +194,20 @@ export async function setTraineeStatus(
   id: string,
   status: "active" | "inactive"
 ): Promise<ActionResult> {
-  await requireStaff();
+  const staff = await requireStaff();
   if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
 
   if (status !== "active" && status !== "inactive") {
     return { ok: false, error: "Invalid status." };
   }
+
+  const [existing] = await db()
+    .select({ id: trainees.id, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, id))
+    .limit(1);
+  if (!existing) return { ok: false, error: "Trainee not found." };
+  if (existing.status === status) return { ok: true };
 
   try {
     await db()
@@ -171,6 +217,16 @@ export async function setTraineeStatus(
   } catch {
     return { ok: false, error: "Could not update the trainee. Try again." };
   }
+
+  await recordTraineeChange({
+    traineeId: id,
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    action: "status",
+    field: "status",
+    before: existing.status,
+    after: status,
+  });
 
   revalidatePath("/trainees");
   revalidatePath("/dashboard");
@@ -189,7 +245,7 @@ async function nextRegistrationNumber(): Promise<string> {
 }
 
 export async function approveTrainee(id: string): Promise<ActionResult> {
-  await requireStaff();
+  const staff = await requireStaff();
   if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
 
   const [trainee] = await db()
@@ -208,6 +264,27 @@ export async function approveTrainee(id: string): Promise<ActionResult> {
       .where(eq(trainees.id, id));
   } catch {
     return { ok: false, error: "Could not approve the trainee. Try again." };
+  }
+
+  await recordTraineeChange({
+    traineeId: id,
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    action: "approved",
+    field: "status",
+    before: "pending",
+    after: "active",
+  });
+  if (trainee.registrationNumber !== registrationNumber) {
+    await recordTraineeChange({
+      traineeId: id,
+      actorId: staff.id,
+      actorName: staff.name ?? null,
+      action: "updated",
+      field: "registrationNumber",
+      before: trainee.registrationNumber,
+      after: registrationNumber,
+    });
   }
 
   revalidatePath("/trainees");
