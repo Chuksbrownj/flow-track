@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
 import {
@@ -90,7 +91,8 @@ function SessionCard({
 }
 
 export function ScheduleClient({ initialSessions }: { initialSessions: SessionRow[] }) {
-  const [sessions, setSessions] = useState(initialSessions);
+  const router = useRouter();
+  const sessions = initialSessions;
   const [addOpen, setAddOpen] = useState(false);
   const [editSession, setEditSession] = useState<SessionRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SessionRow | null>(null);
@@ -111,9 +113,9 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
     startTransition(async () => {
       const result = await deleteSession(deleteTarget.id);
       if (result.ok) {
-        setSessions((prev) => prev.filter((s) => s.id !== deleteTarget.id));
         setDeleteTarget(null);
         toast.success("Session deleted.");
+        router.refresh();
       } else {
         toast.error(result.error ?? "Something went wrong.");
       }
@@ -212,6 +214,7 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
             onSuccess={() => {
               setAddOpen(false);
               toast.success("Session added.");
+              router.refresh();
             }}
             onCancel={() => setAddOpen(false)}
           />
@@ -231,6 +234,7 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
               onSuccess={() => {
                 setEditSession(null);
                 toast.success("Session updated.");
+                router.refresh();
               }}
               onCancel={() => setEditSession(null)}
             />
