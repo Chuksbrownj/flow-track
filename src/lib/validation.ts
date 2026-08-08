@@ -28,6 +28,12 @@ export function validateTrainee(input: {
   return null;
 }
 
+export function validatePassword(password: string) {
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (password.length > 128) return "Password is too long (max 128 characters).";
+  return null;
+}
+
 export function validateScore(value: number) {
   if (Number.isNaN(value) || value < 0 || value > 100) return "Scores must be between 0 and 100.";
   return null;

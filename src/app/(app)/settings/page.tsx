@@ -1,4 +1,5 @@
-import { Building2, Info } from "lucide-react";
+import { Building2, Info, ShieldCheck } from "lucide-react";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import {
   Card,
   CardContent,
@@ -55,6 +56,19 @@ export default function SettingsPage() {
             <p className="text-sm text-muted-foreground">
               Training management system for the OYA / HYPREP Digital Skills Training Programme.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Security
+            </CardTitle>
+            <CardDescription>Update your account password.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChangePasswordForm />
           </CardContent>
         </Card>
       </div>

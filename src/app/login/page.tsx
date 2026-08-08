@@ -4,8 +4,13 @@ import { LoginForm } from "@/components/auth/login-form";
 
 export const metadata = { title: "Sign in" };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ changed?: string }>;
+}) {
   const session = await auth();
+  const { changed } = await searchParams;
   if (session?.user) redirect("/dashboard");
 
   return (
@@ -20,6 +25,11 @@ export default async function LoginPage() {
             OYA / HYPREP Digital Skills Training Programme
           </p>
         </div>
+        {changed ? (
+          <p className="mb-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-center text-sm text-primary">
+            Password updated successfully. Please sign in with your new password.
+          </p>
+        ) : null}
         <LoginForm />
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Authorized personnel only.
