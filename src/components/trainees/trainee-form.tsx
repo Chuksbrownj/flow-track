@@ -64,8 +64,10 @@ export function TraineeForm({
         <Input
           id="registrationNumber"
           name="registrationNumber"
-          placeholder="e.g. OYA-0001"
+          placeholder="e.g. 2024001"
           defaultValue={trainee?.registrationNumber ?? ""}
+          inputMode="numeric"
+          pattern="[0-9]*"
           required={mode === "create" || trainee?.status !== "pending"}
           minLength={3}
           maxLength={30}
