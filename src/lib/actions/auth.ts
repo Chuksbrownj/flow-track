@@ -15,7 +15,9 @@ function value(formData: FormData, key: string): string {
 }
 
 export async function logout() {
-  await signOut({ redirectTo: "/login" });
+  const user = await requireUser().catch(() => null);
+  const target = user?.role === "admin" ? "/admin/login" : "/login";
+  await signOut({ redirectTo: target });
 }
 
 export async function registerTrainee(formData: FormData): Promise<ActionResult> {
@@ -110,6 +112,7 @@ export async function changePassword(formData: FormData): Promise<ActionResult> 
     return { ok: false, error: "Could not update your password. Try again." };
   }
 
-  await signOut({ redirectTo: "/login?changed=1" });
+  const target = user.role === "admin" ? "/admin/login?changed=1" : "/login?changed=1";
+  await signOut({ redirectTo: target });
   return { ok: true };
 }

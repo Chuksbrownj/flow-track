@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authenticate } from "@/app/login/actions";
 
-export function LoginForm() {
+export function LoginForm({
+  emailPlaceholder = "you@example.com",
+  buttonLabel = "Sign in",
+}: {
+  emailPlaceholder?: string;
+  buttonLabel?: string;
+} = {}) {
   const [error, formAction, isPending] = useActionState(authenticate, undefined);
 
   return (
@@ -18,7 +24,7 @@ export function LoginForm() {
           id="email"
           name="email"
           type="email"
-          placeholder="admin@thrilled.com"
+          placeholder={emailPlaceholder}
           autoComplete="email"
           required
         />
@@ -42,7 +48,7 @@ export function LoginForm() {
       ) : null}
       <Button type="submit" className="w-full" disabled={isPending}>
         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {isPending ? "Signing in..." : "Sign in"}
+        {isPending ? "Signing in..." : buttonLabel}
       </Button>
     </form>
   );

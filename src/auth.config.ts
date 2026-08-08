@@ -10,10 +10,15 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user;
       const { pathname } = request.nextUrl;
 
-      if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
+      if (isLoggedIn && (pathname === "/login" || pathname === "/register" || pathname === "/admin/login")) {
         return Response.redirect(new URL("/", request.nextUrl));
       }
-      if (pathname === "/" || pathname.startsWith("/login") || pathname.startsWith("/register")) {
+      if (
+        pathname === "/" ||
+        pathname.startsWith("/login") ||
+        pathname.startsWith("/register") ||
+        pathname === "/admin/login"
+      ) {
         return true;
       }
       if (!isLoggedIn) {

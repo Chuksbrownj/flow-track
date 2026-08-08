@@ -37,12 +37,20 @@ export default async function LoginPage({
           </p>
         ) : null}
         <LoginForm />
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          New trainee?{" "}
-          <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
-            Create an account
-          </Link>
-        </p>
+        <div className="mt-6 space-y-2 text-center text-xs text-muted-foreground">
+          <p>
+            New trainee?{" "}
+            <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
+              Create an account
+            </Link>
+          </p>
+          <p>
+            Staff or trainer?{" "}
+            <Link href="/admin/login" className="font-medium text-primary underline-offset-3 hover:underline">
+              Sign in here
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );
