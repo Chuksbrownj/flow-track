@@ -6,13 +6,7 @@ import { toast } from "sonner";
 import { CalendarCheck2, Fingerprint, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { checkInAttendance } from "@/lib/actions/attendance";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
@@ -100,11 +94,6 @@ export function ProfileAttendance({
           <CalendarCheck2 className="h-5 w-5 text-primary" />
           Attendance
         </CardTitle>
-        <CardDescription>
-          Your attendance for {month}. Check-in runs automatically from your registered device and
-          stays open until 6pm GMT; if no device is registered yet, sign in with your account
-          password to bind this one.
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
@@ -180,18 +169,6 @@ export function ProfileAttendance({
               <p className="text-xs font-medium text-destructive">{passwordError}</p>
             ) : null}
           </div>
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-          <div>
-            <p className="text-sm font-medium">Registered device</p>
-            <p className="text-xs text-muted-foreground">
-              {deviceRegistered
-                ? "This device is bound to your account."
-                : "Not registered yet — your first check-in signs in with your account password and binds this device."}
-            </p>
-          </div>
-          <StatusBadge status={deviceRegistered ? "active" : "pending"} />
         </div>
 
         <MonthCalendar month={month} records={records} mode="trainee" />
