@@ -33,7 +33,7 @@ export default async function AttendancePage({
   await settleAttendance();
 
   // Trainee self-service view (their own check-in page).
-  if (user.role !== "admin") {
+  if (user.role === "trainee") {
     const { month } = await searchParams;
     const monthParam = validMonth(month);
     const { start, end } = monthRange(monthParam);
@@ -104,7 +104,7 @@ export default async function AttendancePage({
     );
   }
 
-  // Admin management view.
+  // Staff management view (master admin + trainers).
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const monthParam = validMonth(month);
