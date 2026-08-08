@@ -47,7 +47,7 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
       status: "active",
     });
   } catch {
-    return { ok: false, error: "A trainee with this registration number already exists." };
+    return { ok: false, error: "Could not add the trainee. Try again." };
   }
 
   revalidatePath("/trainees");
@@ -92,7 +92,7 @@ export async function updateTrainee(id: string, formData: FormData): Promise<Act
       })
       .where(eq(trainees.id, id));
   } catch {
-    return { ok: false, error: "A trainee with this registration number already exists." };
+    return { ok: false, error: "Could not update the trainee. Try again." };
   }
 
   revalidatePath("/trainees");
@@ -106,10 +106,18 @@ export async function setTraineeStatus(
 ): Promise<ActionResult> {
   await requireUser();
 
-  await db()
-    .update(trainees)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(trainees.id, id));
+  if (status !== "active" && status !== "inactive") {
+    return { ok: false, error: "Invalid status." };
+  }
+
+  try {
+    await db()
+      .update(trainees)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(trainees.id, id));
+  } catch {
+    return { ok: false, error: "Could not update the trainee. Try again." };
+  }
 
   revalidatePath("/trainees");
   revalidatePath("/dashboard");

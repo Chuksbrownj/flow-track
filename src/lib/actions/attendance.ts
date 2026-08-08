@@ -21,6 +21,10 @@ export async function markAttendance(
 ): Promise<ActionResult> {
   await requireUser();
 
+  if (status !== "present" && status !== "absent") {
+    return { ok: false, error: "Invalid status." };
+  }
+
   const day = validDate(date);
 
   const [trainee] = await db()
