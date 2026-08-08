@@ -8,6 +8,7 @@ import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth-guard";
 import { isValidEmail, validatePassword } from "@/lib/validation";
 import { isValidTopic } from "@/lib/topics";
+import { isUuid } from "@/lib/validation";
 import { sendAccountCredentialsEmail } from "@/lib/email";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
@@ -77,6 +78,7 @@ export async function createStaff(formData: FormData): Promise<ActionResult> {
 
 export async function updateStaff(userId: string, formData: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
+  if (!isUuid(userId)) return { ok: false, error: "Staff account not found." };
 
   const name = value(formData, "name");
   const role = value(formData, "role");
@@ -124,6 +126,7 @@ export async function updateStaff(userId: string, formData: FormData): Promise<A
 
 export async function resetStaffPassword(userId: string, formData: FormData): Promise<ActionResult> {
   await requireAdmin();
+  if (!isUuid(userId)) return { ok: false, error: "Staff account not found." };
 
   const password = String(formData.get("password") ?? "");
   const passwordError = validatePassword(password);
@@ -144,6 +147,7 @@ export async function resetStaffPassword(userId: string, formData: FormData): Pr
 
 export async function deleteStaff(userId: string): Promise<ActionResult> {
   const admin = await requireAdmin();
+  if (!isUuid(userId)) return { ok: false, error: "Staff account not found." };
 
   if (admin.id === userId) return { ok: false, error: "You cannot delete your own account." };
 

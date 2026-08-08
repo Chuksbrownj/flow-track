@@ -132,6 +132,12 @@ export const examSubmissions = pgTable(
   (t) => [uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId)]
 );
 
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+});
+
 export const trainingSchedule = pgTable("training_schedule", {
   id: uuid("id").defaultRandom().primaryKey(),
   title: text("title").notNull(),

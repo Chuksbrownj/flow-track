@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
 import { passwordResetTokens, users } from "@/db/schema";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { isValidEmail, validatePassword } from "@/lib/validation";
 
 export type ResetResult = { ok: boolean; error?: string; staff?: boolean };
@@ -15,12 +16,29 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+const RESET_EMAIL_LIMIT = 3; // requests per email per hour
+const RESET_IP_LIMIT = 10; // requests per IP per hour
+const RESET_WINDOW_MS = 60 * 60 * 1000;
+
 export async function requestPasswordReset(
   _prevState: ResetResult | undefined,
   formData: FormData
 ): Promise<ResetResult> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!isValidEmail(email)) return { ok: false, error: "Please enter a valid email address." };
+
+  const ip = await clientIp();
+  const [byEmail, byIp] = await Promise.all([
+    rateLimit(`reset:email:${email}`, RESET_EMAIL_LIMIT, RESET_WINDOW_MS),
+    rateLimit(`reset:ip:${ip}`, RESET_IP_LIMIT, RESET_WINDOW_MS),
+  ]);
+  if (!byEmail.ok || !byIp.ok) {
+    const limited = !byEmail.ok ? byEmail : byIp;
+    return {
+      ok: false,
+      error: `Too many reset requests. Try again in ${Math.ceil((limited.retryAfterSeconds ?? 3600) / 60)} minute(s).`,
+    };
+  }
 
   const [user] = await db().select({ id: users.id, email: users.email }).from(users).where(eq(users.email, email)).limit(1);
 

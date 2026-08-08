@@ -6,6 +6,7 @@ import { signOut } from "@/auth";
 import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { validatePassword, validateSignup } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -20,7 +21,24 @@ export async function logout() {
   await signOut({ redirectTo: target });
 }
 
+const REGISTER_IP_LIMIT = 50; // signups per IP per hour (shared campus networks are normal)
+const REGISTER_EMAIL_LIMIT = 3; // signups per email per hour
+const REGISTER_WINDOW_MS = 60 * 60 * 1000;
+
 export async function registerTrainee(formData: FormData): Promise<ActionResult> {
+  const email = value(formData, "email").toLowerCase();
+  const ip = await clientIp();
+  const [byIp, byEmail] = await Promise.all([
+    rateLimit(`register:ip:${ip}`, REGISTER_IP_LIMIT, REGISTER_WINDOW_MS),
+    email ? rateLimit(`register:email:${email}`, REGISTER_EMAIL_LIMIT, REGISTER_WINDOW_MS) : { ok: true },
+  ]);
+  if (!byIp.ok || !byEmail.ok) {
+    return {
+      ok: false,
+      error: "Too many sign-up attempts. Please wait a while and try again.",
+    };
+  }
+
   const input = {
     registrationNumber: value(formData, "registrationNumber").toUpperCase(),
     fullName: value(formData, "fullName"),

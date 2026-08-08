@@ -1,13 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { and, eq, ne } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
 import { attendance, trainees, users } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { attendanceEditable, isCheckinOpen, todayStr } from "@/lib/date";
+import { isUuid } from "@/lib/validation";
+import { clientIp } from "@/lib/rate-limit";
 
 export type ActionResult = {
   ok: boolean;
@@ -20,13 +21,6 @@ export type ActionResult = {
 function validDate(value: string | undefined): string {
   if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   return todayStr();
-}
-
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  const forwarded = h.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return h.get("x-real-ip") ?? "";
 }
 
 function isFingerprint(value: string): boolean {
@@ -159,6 +153,7 @@ export async function confirmAttendance(
   date?: string
 ): Promise<ActionResult> {
   const admin = await requireStaff();
+  if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
   if (status !== "present" && status !== "absent") return { ok: false, error: "Invalid status." };
 
   const day = validDate(date);
@@ -203,6 +198,7 @@ export async function confirmAttendance(
  */
 export async function resetDeviceBinding(traineeId: string): Promise<ActionResult> {
   await requireStaff();
+  if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
   try {
     await db()
       .update(trainees)
@@ -225,6 +221,7 @@ export async function markAttendance(
   date?: string
 ): Promise<ActionResult> {
   const admin = await requireStaff();
+  if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
 
   if (status !== "present" && status !== "absent") {
     return { ok: false, error: "Invalid status." };

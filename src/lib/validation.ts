@@ -1,4 +1,10 @@
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
 const REG_NO_PATTERN = /^\d+$/;
 const PHONE_PATTERN = /^[0-9+()\- .]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { assessments, trainees } from "@/db/schema";
 import { requireStaff } from "@/lib/auth-guard";
-import { validateScore } from "@/lib/validation";
+import { isUuid, validateScore } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -18,6 +18,7 @@ export async function saveAssessment(
   scores: AssessmentInput
 ): Promise<ActionResult> {
   await requireStaff();
+  if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
 
   const values: Partial<Record<ScoreKey, number>> = {};
   for (const key of scoreKeys) {

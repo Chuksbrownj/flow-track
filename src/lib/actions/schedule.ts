@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { trainingSchedule } from "@/db/schema";
 import { requireStaff } from "@/lib/auth-guard";
-import { validateSchedule } from "@/lib/validation";
+import { isUuid, validateSchedule } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -48,6 +48,7 @@ export async function createSession(formData: FormData): Promise<ActionResult> {
 
 export async function updateSession(id: string, formData: FormData): Promise<ActionResult> {
   await requireStaff();
+  if (!isUuid(id)) return { ok: false, error: "Session not found." };
 
   const input = {
     title: value(formData, "title"),
@@ -84,6 +85,7 @@ export async function updateSession(id: string, formData: FormData): Promise<Act
 
 export async function deleteSession(id: string): Promise<ActionResult> {
   await requireStaff();
+  if (!isUuid(id)) return { ok: false, error: "Session not found." };
 
   try {
     await db().delete(trainingSchedule).where(eq(trainingSchedule.id, id));

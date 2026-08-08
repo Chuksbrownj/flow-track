@@ -7,6 +7,7 @@ import { assessments, examQuestions, exams, examSubmissions, trainees } from "@/
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { isValidTopic } from "@/lib/topics";
 import { parseQuestionFile } from "@/lib/assessment-import";
+import { isUuid } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -141,6 +142,7 @@ export async function importQuestions(
   formData: FormData
 ): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
   if (exam.status !== "draft") {
@@ -193,6 +195,7 @@ export async function importQuestions(
 
 export async function updateExamDetails(examId: string, formData: FormData): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff, true);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
@@ -220,6 +223,7 @@ export async function updateExamDetails(examId: string, formData: FormData): Pro
 
 export async function deleteExam(examId: string): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff, true);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
@@ -235,6 +239,7 @@ export async function deleteExam(examId: string): Promise<ActionResult> {
 
 export async function openExam(examId: string, closesAt: string): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
   if (exam.status !== "draft") {
@@ -270,6 +275,7 @@ export async function openExam(examId: string, closesAt: string): Promise<Action
 
 export async function closeExam(examId: string): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
@@ -355,6 +361,7 @@ async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string)
 
 export async function startExam(examId: string): Promise<ActionResult & { session?: ExamSession }> {
   const user = await requireUser();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
@@ -405,6 +412,7 @@ export async function saveAnswer(
   currentQuestion: number
 ): Promise<ActionResult> {
   const user = await requireUser();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
@@ -451,6 +459,7 @@ export async function saveAnswer(
 
 export async function recordViolation(examId: string): Promise<ActionResult & { violations?: number }> {
   const user = await requireUser();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
 
   const [trainee] = await db()
@@ -486,6 +495,7 @@ export async function recordViolation(examId: string): Promise<ActionResult & { 
 
 export async function submitExam(examId: string): Promise<ActionResult & { result?: ExamResult }> {
   const user = await requireUser();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
@@ -571,6 +581,7 @@ export async function gradeWritten(
   grades: Record<string, number>
 ): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(submissionId)) return { ok: false, error: "Submission not found." };
 
   const [submission] = await db()
     .select()
@@ -636,6 +647,7 @@ export async function gradeWritten(
 
 export async function overrideSubmission(submissionId: string): Promise<ActionResult> {
   const staff = await requireStaff();
+  if (!isUuid(submissionId)) return { ok: false, error: "Submission not found." };
 
   const [submission] = await db()
     .select()
