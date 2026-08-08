@@ -1,11 +1,13 @@
 import { asc } from "drizzle-orm";
 import { TraineesClient } from "@/components/trainees/trainees-client";
+import { requireAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { trainees } from "@/db/schema";
 
 export const metadata = { title: "Trainees" };
 
 export default async function TraineesPage() {
+  await requireAdmin();
   const rows = await db().select().from(trainees).orderBy(asc(trainees.createdAt));
 
   const traineeList = rows.map((trainee) => ({

@@ -1,11 +1,13 @@
 import { asc, ne } from "drizzle-orm";
 import { AssessmentsClient } from "@/components/assessments/assessments-client";
+import { requireAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, trainees } from "@/db/schema";
 
 export const metadata = { title: "Assessments" };
 
 export default async function AssessmentsPage() {
+  await requireAdmin();
   const database = db();
 
   const [traineeRows, assessmentRows] = await Promise.all([

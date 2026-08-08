@@ -1,4 +1,5 @@
 import { and, count, eq, gte } from "drizzle-orm";
+import { requireAdmin } from "@/lib/auth-guard";
 import { ClipboardList, UserCheck, UserX, Users } from "lucide-react";
 import { AttendanceChart } from "@/components/dashboard/attendance-chart";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -26,6 +27,7 @@ function shortDay(iso: string) {
 }
 
 export default async function DashboardPage() {
+  await requireAdmin();
   const database = db();
   const today = todayStr();
 

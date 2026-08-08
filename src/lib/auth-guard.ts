@@ -9,8 +9,6 @@ export async function requireUser() {
 
 export async function requireAdmin() {
   const user = await requireUser();
-  if (user.role !== "admin") {
-    throw new Error("This action requires administrator access.");
-  }
+  if (user.role !== "admin") redirect("/portal");
   return user;
 }

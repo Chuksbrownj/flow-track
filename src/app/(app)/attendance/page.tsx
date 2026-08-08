@@ -1,5 +1,6 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { AttendanceClient } from "@/components/attendance/attendance-client";
+import { requireAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
 import { currentMonth, monthRange, todayStr } from "@/lib/date";
@@ -16,6 +17,8 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ date?: string; month?: string }>;
 }) {
+  await requireAdmin();
+
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const monthParam = validMonth(month);

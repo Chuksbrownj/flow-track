@@ -9,8 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, attendance, trainees } from "@/db/schema";
 import { currentMonth, formatDate, monthRange } from "@/lib/date";
@@ -31,8 +31,8 @@ export default async function PortalPage({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
+  const user = await requireUser();
+  if (user.role === "admin") redirect("/dashboard");
 
   const { month } = await searchParams;
   const monthParam = month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
@@ -41,7 +41,7 @@ export default async function PortalPage({
   const [trainee] = await db()
     .select()
     .from(trainees)
-    .where(eq(trainees.userId, session.user.id ?? ""))
+    .where(eq(trainees.userId, user.id ?? ""))
     .limit(1);
 
   if (!trainee) {
