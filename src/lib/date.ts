@@ -9,9 +9,12 @@ export function daysAgoStr(days: number) {
   return todayStr(new Date(Date.now() - days * 86400000));
 }
 
-function parseIso(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+function parseIso(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+  }
+  return new Date(value);
 }
 
 export function formatDate(iso: string | null | undefined) {
