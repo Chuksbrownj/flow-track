@@ -14,6 +14,7 @@ import {
 import { db } from "@/db/client";
 import { assessments, attendance, trainees, trainingSchedule } from "@/db/schema";
 import { daysAgoStr, formatMonth, formatDay, formatTime, formatLongDate, todayStr } from "@/lib/date";
+import { settleAttendance } from "@/lib/attendance-settle";
 
 export const metadata = { title: "Dashboard" };
 
@@ -28,6 +29,7 @@ function shortDay(iso: string) {
 
 export default async function DashboardPage() {
   await requireAdmin();
+  await settleAttendance();
   const database = db();
   const today = todayStr();
 

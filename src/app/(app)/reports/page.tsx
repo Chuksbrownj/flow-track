@@ -3,6 +3,7 @@ import { ReportsClient } from "@/components/reports/reports-client";
 import { requireAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, attendance, trainees } from "@/db/schema";
+import { settleAttendance } from "@/lib/attendance-settle";
 
 export const metadata = { title: "Reports" };
 
@@ -18,6 +19,7 @@ function toAverage(value: string | null): number | null {
 
 export default async function ReportsPage() {
   await requireAdmin();
+  await settleAttendance();
   const database = db();
 
   const [

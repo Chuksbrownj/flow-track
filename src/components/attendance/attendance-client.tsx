@@ -77,12 +77,15 @@ function Stat({
 export function AttendanceClient({
   date,
   month,
+  editable,
   trainees,
   initialRecords,
   monthRecords,
 }: {
   date: string;
   month: string;
+  /** Whether attendance for the selected date can still be changed (72h window). */
+  editable: boolean;
   trainees: TraineeOption[];
   initialRecords: AttendanceRecord[];
   monthRecords: MonthRecord[];
@@ -194,7 +197,10 @@ export function AttendanceClient({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
-          <p className="text-sm text-muted-foreground">Mark trainees as present or absent.</p>
+          <p className="text-sm text-muted-foreground">
+            Trainees self check-in until 6pm GMT; trainers can mark or change attendance within 72
+            hours of the day.
+          </p>
         </div>
         <div className="w-full sm:w-auto">
           <Label htmlFor="date" className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -220,12 +226,19 @@ export function AttendanceClient({
         <Stat label="Attendance rate" value={percentage} />
       </div>
 
+      {!editable ? (
+        <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-gold-foreground">
+          This date is outside the 72-hour edit window — attendance for it can no longer be changed.
+        </div>
+      ) : null}
+
       {pending > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Pending check-ins</CardTitle>
             <CardDescription>
-              Auto check-ins awaiting confirmation. Confirm or reject them from any device.
+              Auto check-ins awaiting confirmation. Confirm or reject them from any device within 72
+              hours.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -250,7 +263,7 @@ export function AttendanceClient({
                         variant="outline"
                         size="sm"
                         className="gap-1.5 text-primary"
-                        disabled={pendingId === record.traineeId}
+                        disabled={!editable || pendingId === record.traineeId}
                         onClick={() => handleConfirm(record.traineeId, "present")}
                       >
                         <CheckCircle2 className="h-4 w-4" />
@@ -260,7 +273,7 @@ export function AttendanceClient({
                         variant="outline"
                         size="sm"
                         className="gap-1.5 text-destructive"
-                        disabled={pendingId === record.traineeId}
+                        disabled={!editable || pendingId === record.traineeId}
                         onClick={() => handleConfirm(record.traineeId, "absent")}
                       >
                         <XCircle className="h-4 w-4" />
@@ -332,7 +345,7 @@ export function AttendanceClient({
                           size="sm"
                           variant="outline"
                           className="gap-1.5 text-primary"
-                          disabled={busy}
+                          disabled={!editable || busy}
                           onClick={() => handleMark(t.id, "present")}
                         >
                           {busy ? (
@@ -346,7 +359,7 @@ export function AttendanceClient({
                           size="sm"
                           variant="outline"
                           className="gap-1.5 text-destructive"
-                          disabled={busy}
+                          disabled={!editable || busy}
                           onClick={() => handleMark(t.id, "absent")}
                         >
                           {busy ? (
@@ -401,7 +414,7 @@ export function AttendanceClient({
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs text-destructive"
-                          disabled={pendingId === record.traineeId}
+                          disabled={!editable || pendingId === record.traineeId}
                           onClick={() => handleMark(record.traineeId, "absent")}
                         >
                           <UserX className="h-3.5 w-3.5" />
@@ -412,7 +425,7 @@ export function AttendanceClient({
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs text-primary"
-                          disabled={pendingId === record.traineeId}
+                          disabled={!editable || pendingId === record.traineeId}
                           onClick={() => handleMark(record.traineeId, "present")}
                         >
                           <UserCheck className="h-3.5 w-3.5" />
@@ -478,7 +491,7 @@ export function AttendanceClient({
                     size="sm"
                     variant="outline"
                     className="text-primary"
-                    disabled={pendingId === selectedTrainee.id}
+                    disabled={!editable || pendingId === selectedTrainee.id}
                     onClick={() => handleMark(selectedTrainee.id, "present")}
                   >
                     <CheckCircle2 className="h-4 w-4" />
@@ -488,7 +501,7 @@ export function AttendanceClient({
                     size="sm"
                     variant="outline"
                     className="text-destructive"
-                    disabled={pendingId === selectedTrainee.id}
+                    disabled={!editable || pendingId === selectedTrainee.id}
                     onClick={() => handleMark(selectedTrainee.id, "absent")}
                   >
                     <XCircle className="h-4 w-4" />

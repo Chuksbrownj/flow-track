@@ -3,7 +3,8 @@ import { AttendanceClient } from "@/components/attendance/attendance-client";
 import { requireAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
-import { currentMonth, monthRange, todayStr } from "@/lib/date";
+import { attendanceEditable, currentMonth, monthRange, todayStr } from "@/lib/date";
+import { settleAttendance } from "@/lib/attendance-settle";
 
 export const metadata = { title: "Attendance" };
 
@@ -18,6 +19,9 @@ export default async function AttendancePage({
   searchParams: Promise<{ date?: string; month?: string }>;
 }) {
   await requireAdmin();
+
+  // Settle no-sign -> absent and unconfirmed -> absent rules before reading.
+  await settleAttendance();
 
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
@@ -57,11 +61,14 @@ export default async function AttendancePage({
       .where(and(gte(attendance.date, monthStart), lte(attendance.date, monthEnd))),
   ]);
 
+  const editable = attendanceEditable(day);
+
   return (
     <AttendanceClient
       key={`${day}-${monthParam}`}
       date={day}
       month={monthParam}
+      editable={editable}
       trainees={traineeRows}
       initialRecords={recordRows.map((row) => ({
         id: row.traineeId,

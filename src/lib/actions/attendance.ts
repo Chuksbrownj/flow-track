@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
 import { attendance, trainees, users } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth-guard";
-import { todayStr } from "@/lib/date";
+import { attendanceEditable, isCheckinOpen, todayStr } from "@/lib/date";
 
 export type ActionResult = {
   ok: boolean;
@@ -60,6 +60,26 @@ export async function checkInAttendance(
   if (!trainee) return { ok: false, error: "No trainee profile is linked to this account." };
   if (trainee.status !== "active") {
     return { ok: false, error: "Your account is not active yet." };
+  }
+
+  const day = todayStr();
+  const [existing] = await db()
+    .select()
+    .from(attendance)
+    .where(and(eq(attendance.traineeId, trainee.id), eq(attendance.date, day)))
+    .limit(1);
+
+  // Already signed for today — no re-sign, whatever the time.
+  if (existing) {
+    if (existing.status === "present" || existing.status === "absent") {
+      return { ok: true, error: undefined, message: `Attendance already recorded as ${existing.status}.` };
+    }
+    return { ok: true, error: undefined, message: "Already checked in — waiting for trainer confirmation." };
+  }
+
+  // Sign-in stays open until 6pm GMT.
+  if (!isCheckinOpen()) {
+    return { ok: false, error: "Sign-in for today closed at 6pm GMT. Contact a trainer if you need help." };
   }
 
   const ip = await clientIp();
@@ -115,20 +135,7 @@ export async function checkInAttendance(
     };
   }
 
-  const day = todayStr();
-  const [existing] = await db()
-    .select()
-    .from(attendance)
-    .where(and(eq(attendance.traineeId, trainee.id), eq(attendance.date, day)))
-    .limit(1);
-
   try {
-    if (existing) {
-      if (existing.status === "present" || existing.status === "absent") {
-        return { ok: true, error: undefined, message: `Attendance already recorded as ${existing.status}.` };
-      }
-      return { ok: true, error: undefined, message: "Already checked in — waiting for trainer confirmation." };
-    }
     await db()
       .insert(attendance)
       .values({ traineeId: trainee.id, date: day, status: "pending", source: "device" });
@@ -155,6 +162,13 @@ export async function confirmAttendance(
   if (status !== "present" && status !== "absent") return { ok: false, error: "Invalid status." };
 
   const day = validDate(date);
+
+  if (!attendanceEditable(day)) {
+    return {
+      ok: false,
+      error: "Attendance for this date can no longer be changed (the 72-hour window has passed).",
+    };
+  }
 
   const [existing] = await db()
     .select({ id: attendance.id, status: attendance.status, source: attendance.source })
@@ -217,6 +231,13 @@ export async function markAttendance(
   }
 
   const day = validDate(date);
+
+  if (!attendanceEditable(day)) {
+    return {
+      ok: false,
+      error: "Attendance for this date can no longer be changed (the 72-hour window has passed).",
+    };
+  }
 
   const [trainee] = await db()
     .select({ id: trainees.id })

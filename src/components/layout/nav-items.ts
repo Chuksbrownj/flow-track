@@ -22,5 +22,6 @@ export const adminNavItems = [
 
 export const traineeNavItems = [
   { href: "/portal", label: "My dashboard", icon: UserCircle },
+  { href: "/profile/attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/profile", label: "Profile", icon: IdCard },
 ];

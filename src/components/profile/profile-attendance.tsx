@@ -23,11 +23,14 @@ export function ProfileAttendance({
   records,
   todayStatus,
   deviceRegistered,
+  checkinOpen,
 }: {
   month: string;
   records: CalendarRecord[];
   todayStatus: string | null;
   deviceRegistered: boolean;
+  /** Whether trainees can still self check-in today (before 6pm GMT). */
+  checkinOpen: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -74,21 +77,21 @@ export function ProfileAttendance({
     attemptCheckIn(false, password);
   }
 
-  // Automatic check-in when the trainee opens their profile (their sign-in moment),
-  // but only when this device is already registered. Otherwise they get the
-  // password prompt to register the device first.
+  // Automatic check-in when the trainee opens the attendance page (their sign-in
+  // moment), but only while the 6pm window is open and this device is already
+  // registered. Otherwise they get the password prompt to register the device.
   useEffect(() => {
     if (autoRan.current) return;
     autoRan.current = true;
-    if (!todayStatus && deviceRegistered) {
+    if (!todayStatus && deviceRegistered && checkinOpen) {
       const id = setTimeout(() => attemptCheckIn(true), 0);
       return () => clearTimeout(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canCheckIn = !todayStatus;
-  const showPasswordPrompt = needsPassword || (!deviceRegistered && !todayStatus);
+  const canCheckIn = !todayStatus && checkinOpen;
+  const showPasswordPrompt = checkinOpen && (needsPassword || (!deviceRegistered && !todayStatus));
 
   return (
     <Card>
@@ -98,8 +101,9 @@ export function ProfileAttendance({
           Attendance
         </CardTitle>
         <CardDescription>
-          Your attendance for {month}. Check-in runs automatically from your registered device; if
-          no device is registered yet, sign in with your account password to bind this one.
+          Your attendance for {month}. Check-in runs automatically from your registered device and
+          stays open until 6pm GMT; if no device is registered yet, sign in with your account
+          password to bind this one.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -113,9 +117,11 @@ export function ProfileAttendance({
               <p className="text-xs text-muted-foreground">
                 {todayStatus
                   ? "Check-in recorded for today."
-                  : showPasswordPrompt
-                    ? "Sign in with your account password to register this device."
-                    : "Checking in from this device..."}
+                  : !checkinOpen
+                    ? "Sign-in for today closed at 6pm GMT. Contact a trainer if you need help."
+                    : showPasswordPrompt
+                      ? "Sign in with your account password to register this device."
+                      : "Checking in from this device..."}
               </p>
             </div>
           </div>
@@ -160,7 +166,13 @@ export function ProfileAttendance({
                   ) : (
                     <ShieldCheck className="h-4 w-4" />
                   )}
-                  {busy || isPending ? "Checking in..." : canCheckIn ? "Check in" : "Checked in"}
+                  {busy || isPending
+                    ? "Checking in..."
+                    : todayStatus
+                      ? "Checked in"
+                      : checkinOpen
+                        ? "Check in"
+                        : "Closed at 6pm GMT"}
                 </Button>
               )}
             </div>

@@ -1,7 +1,7 @@
-import { and, eq, gte, lte } from "drizzle-orm";
-import { UserCircle } from "lucide-react";
+import { eq } from "drizzle-orm";
+import { ArrowRight, CalendarCheck2, UserCircle } from "lucide-react";
+import Link from "next/link";
 import { ProfileView } from "@/components/profile/profile-view";
-import { ProfileAttendance } from "@/components/profile/profile-attendance";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
   Card,
@@ -13,23 +13,15 @@ import {
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { attendance, trainees } from "@/db/schema";
-import { currentMonth, formatDate, monthRange, todayStr } from "@/lib/date";
+import { trainees } from "@/db/schema";
+import { formatDate } from "@/lib/date";
 import { maskEmail, maskPhone } from "@/lib/mask";
 
 export const metadata = { title: "Profile" };
 
-export default async function ProfilePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ month?: string }>;
-}) {
+export default async function ProfilePage() {
   const user = await requireUser();
   if (user.role === "admin") redirect("/dashboard");
-
-  const { month } = await searchParams;
-  const monthParam = month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
-  const { start, end } = monthRange(monthParam);
 
   const [trainee] = await db()
     .select({
@@ -59,24 +51,6 @@ export default async function ProfilePage({
       </div>
     );
   }
-
-  const [attendanceRows, todayRow] = await Promise.all([
-    db()
-      .select({ date: attendance.date, status: attendance.status })
-      .from(attendance)
-      .where(
-        and(
-          eq(attendance.traineeId, trainee.id),
-          gte(attendance.date, start),
-          lte(attendance.date, end)
-        )
-      ),
-    db()
-      .select({ status: attendance.status })
-      .from(attendance)
-      .where(and(eq(attendance.traineeId, trainee.id), eq(attendance.date, todayStr())))
-      .limit(1),
-  ]);
 
   return (
     <div className="space-y-6">
@@ -110,12 +84,23 @@ export default async function ProfilePage({
         </CardContent>
       </Card>
 
-      <ProfileAttendance
-        month={monthParam}
-        records={attendanceRows.map((row) => ({ date: row.date, status: row.status }))}
-        todayStatus={todayRow[0]?.status ?? null}
-        deviceRegistered={!!trainee.deviceFingerprint}
-      />
+      <Link
+        href="/profile/attendance"
+        className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
+            <CalendarCheck2 className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Attendance</p>
+            <p className="text-xs text-muted-foreground">
+              Check in and view your attendance record.
+            </p>
+          </div>
+        </div>
+        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+      </Link>
     </div>
   );
 }

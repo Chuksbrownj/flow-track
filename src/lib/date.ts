@@ -5,6 +5,24 @@ export function todayStr(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+/** Trainee self check-in stays open until this hour (18:00 GMT/UTC). */
+export const CHECKIN_CUTOFF_HOUR = 18;
+
+/** True while trainees can still self check-in for today (before 18:00 GMT). */
+export function isCheckinOpen(date = new Date()) {
+  return date.getUTCHours() < CHECKIN_CUTOFF_HOUR;
+}
+
+/**
+ * Whether a trainer can still mark/change attendance for a given day.
+ * Records stay editable for 72 hours after the day ends.
+ */
+export function attendanceEditable(dateStr: string, now = new Date()) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const endOfDay = Date.UTC(y, (m ?? 1) - 1, (d ?? 1) + 1);
+  return now.getTime() <= endOfDay + 72 * 60 * 60 * 1000;
+}
+
 export function daysAgoStr(days: number) {
   return todayStr(new Date(Date.now() - days * 86400000));
 }
