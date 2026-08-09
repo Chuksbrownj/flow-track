@@ -43,28 +43,27 @@ export function validatePassword(password: string) {
 export function validateSignup(input: {
   registrationNumber: string;
   fullName: string;
-  email: string;
-  phone: string;
   gender: string;
   password: string;
 }) {
-  if (!input.registrationNumber) return "Registration number is required.";
+  if (!input.registrationNumber) return "Registration code is required.";
   if (input.registrationNumber.length < 3 || input.registrationNumber.length > 30)
-    return "Registration number must be 3–30 characters.";
+    return "Registration code must be 3–30 characters.";
   if (!REG_NO_PATTERN.test(input.registrationNumber))
-    return "Registration number may only contain numbers.";
+    return "Registration code may only contain numbers.";
   if (!input.fullName || input.fullName.length < 3)
     return "Full name is required (at least 3 characters).";
-  if (!isValidEmail(input.email)) return "Please enter a valid email address.";
   if (!["Male", "Female"].includes(input.gender)) return "Please choose a valid gender.";
-  if (
-    !input.phone ||
-    input.phone.length < 7 ||
-    input.phone.length > 20 ||
-    !PHONE_PATTERN.test(input.phone)
-  )
-    return "Please enter a valid phone number.";
   return validatePassword(input.password);
+}
+
+export function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function validateScore(value: number) {

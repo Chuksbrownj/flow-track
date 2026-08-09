@@ -32,7 +32,7 @@ export default async function DashboardPage() {
   await settleAttendance();
   const database = db();
   const today = todayStr();
-  const isTrainer = user.role === "trainer";
+  const isAdmin = user.role === "admin";
 
   const [totalTrainees, presentToday, absentToday, assessmentCount, weekRows, upcoming] =
     await Promise.all([
@@ -79,8 +79,8 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        {isTrainer ? (
-          <Badge variant="secondary">Trainer · {user.topic ?? "Topic not set"}</Badge>
+        {isAdmin ? (
+          <Badge variant="secondary">Admin · {user.topic ?? "Topic not set"}</Badge>
         ) : null}
         <p className="text-sm text-muted-foreground">{formatLongDate()}</p>
       </div>

@@ -5,10 +5,11 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
-import { requireAdmin, requireStaff } from "@/lib/auth-guard";
+import { requireMasterAdmin, requireStaff } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { recordTraineeChange } from "@/lib/trainee-logs";
-import { isUuid, validateTrainee } from "@/lib/validation";
+import { recordAudit } from "@/lib/audit";
+import { isUuid, validatePassword, validateTrainee } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -65,6 +66,15 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
       actorName: staff.name ?? null,
       action: "created",
     });
+    await recordAudit({
+      actorId: staff.id,
+      actorName: staff.name ?? null,
+      actorRole: staff.role,
+      action: "created",
+      entityType: "trainee",
+      entityId: createdId,
+      summary: `Added trainee ${input.fullName} (${registrationNumber})`,
+    });
   }
 
   revalidatePath("/trainees");
@@ -79,7 +89,7 @@ export async function updateTrainee(
 ): Promise<ActionResult> {
   // Only the master admin can change a trainee's registration details, and
   // every change must be confirmed with the master admin's password.
-  const admin = await requireAdmin();
+  const admin = await requireMasterAdmin();
   if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
 
   // Throttle password attempts on this sensitive action.
@@ -184,6 +194,16 @@ export async function updateTrainee(
     )
   );
 
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "updated",
+    entityType: "trainee",
+    entityId: id,
+    summary: `Updated ${existing.fullName}'s registration details (${changes.length} field${changes.length === 1 ? "" : "s"} changed)`,
+  });
+
   revalidatePath("/trainees");
   revalidatePath("/dashboard");
   revalidatePath("/portal");
@@ -228,6 +248,16 @@ export async function setTraineeStatus(
     after: status,
   });
 
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "status",
+    entityType: "trainee",
+    entityId: id,
+    summary: `${existing.status === "active" ? "Deactivated" : "Activated"} trainee`,
+  });
+
   revalidatePath("/trainees");
   revalidatePath("/dashboard");
   return { ok: true };
@@ -242,6 +272,52 @@ async function nextRegistrationNumber(): Promise<string> {
     if (match) max = Math.max(max, Number(match[1]));
   }
   return `OYA-${String(max + 1).padStart(4, "0")}`;
+}
+
+/**
+ * Staff reset of a student's password (fallback for students who never add an
+ * email to their profile and so cannot use the self-service reset).
+ */
+export async function resetStudentPassword(
+  traineeId: string,
+  password: string
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(traineeId)) return { ok: false, error: "Trainee not found." };
+
+  const passwordError = validatePassword(password);
+  if (passwordError) return { ok: false, error: passwordError };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, userId: trainees.userId, fullName: trainees.fullName })
+    .from(trainees)
+    .where(eq(trainees.id, traineeId))
+    .limit(1);
+  if (!trainee?.userId) {
+    return { ok: false, error: "No sign-in account is linked to this trainee." };
+  }
+
+  try {
+    await db()
+      .update(users)
+      .set({ passwordHash: await bcrypt.hash(password, 10) })
+      .where(eq(users.id, trainee.userId));
+  } catch {
+    return { ok: false, error: "Could not reset the password. Try again." };
+  }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "password_reset",
+    entityType: "trainee",
+    entityId: traineeId,
+    summary: `Reset the password for ${trainee.fullName}`,
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true };
 }
 
 export async function approveTrainee(id: string): Promise<ActionResult> {
@@ -286,6 +362,16 @@ export async function approveTrainee(id: string): Promise<ActionResult> {
       after: registrationNumber,
     });
   }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "approved",
+    entityType: "trainee",
+    entityId: id,
+    summary: `Approved trainee registration`,
+  });
 
   revalidatePath("/trainees");
   revalidatePath("/dashboard");

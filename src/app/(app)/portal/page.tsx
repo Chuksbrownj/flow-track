@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { GraduationCap, Trophy } from "lucide-react";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
@@ -12,12 +12,13 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, trainees } from "@/db/schema";
+import { formatWeek } from "@/lib/date";
 
 export const metadata = { title: "My dashboard" };
 
 export default async function PortalPage() {
   const user = await requireUser();
-  if (user.role === "admin") redirect("/dashboard");
+  if (user.role === "master_admin" || user.role === "admin") redirect("/dashboard");
 
   const [trainee] = await db()
     .select()
@@ -41,6 +42,7 @@ export default async function PortalPage() {
   const [assessmentRows] = await Promise.all([
     db()
       .select({
+        week: assessments.week,
         graphicDesign: assessments.graphicDesign,
         animation: assessments.animation,
         dataAnalysis: assessments.dataAnalysis,
@@ -48,6 +50,7 @@ export default async function PortalPage() {
       })
       .from(assessments)
       .where(eq(assessments.traineeId, trainee.id))
+      .orderBy(desc(assessments.week))
       .limit(1),
   ]);
 
@@ -93,7 +96,9 @@ export default async function PortalPage() {
               <GraduationCap className="h-5 w-5 text-primary" />
               Assessments
             </CardTitle>
-            <CardDescription>Your recorded scores by programme area.</CardDescription>
+            <CardDescription>
+              Your latest recorded scores{assessment ? ` (${formatWeek(assessment.week)})` : ""}.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

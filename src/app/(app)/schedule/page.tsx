@@ -1,13 +1,15 @@
 import { asc } from "drizzle-orm";
 import { ScheduleClient } from "@/components/schedule/schedule-client";
-import { requireStaff } from "@/lib/auth-guard";
+import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { trainingSchedule } from "@/db/schema";
 
 export const metadata = { title: "Training Schedule" };
 
 export default async function SchedulePage() {
-  await requireStaff();
+  const user = await requireUser();
+  const readOnly = user.role === "student";
+
   const rows = await db()
     .select()
     .from(trainingSchedule)
@@ -21,7 +23,8 @@ export default async function SchedulePage() {
     startTime: session.startTime,
     endTime: session.endTime,
     description: session.description,
+    googleFormUrl: session.googleFormUrl,
   }));
 
-  return <ScheduleClient initialSessions={sessions} />;
+  return <ScheduleClient initialSessions={sessions} readOnly={readOnly} />;
 }

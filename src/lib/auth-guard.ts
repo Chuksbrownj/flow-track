@@ -7,15 +7,16 @@ export async function requireUser() {
   return session.user;
 }
 
-export async function requireAdmin() {
+/** Master admin only. */
+export async function requireMasterAdmin() {
   const user = await requireUser();
-  if (user.role !== "admin") redirect("/dashboard");
+  if (user.role !== "master_admin") redirect("/dashboard");
   return user;
 }
 
-/** Master admin or trainer (any staff member). */
+/** Master admin or admin (trainer) — any staff member. */
 export async function requireStaff() {
   const user = await requireUser();
-  if (user.role !== "admin" && user.role !== "trainer") redirect("/portal");
+  if (user.role !== "master_admin" && user.role !== "admin") redirect("/portal");
   return user;
 }

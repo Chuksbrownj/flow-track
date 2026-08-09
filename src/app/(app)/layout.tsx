@@ -10,13 +10,13 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const role = session.user.role === "admin" ? "admin" : session.user.role === "trainer" ? "trainer" : "trainee";
+  const role = session.user.role;
   const displayName =
-    role === "admin"
+    role === "master_admin"
       ? session.user.name ?? "Administrator"
-      : role === "trainer"
-        ? session.user.name ?? "Trainer"
-        : session.user.name?.trim().split(/\s+/)[0] || "Trainee";
+      : role === "admin"
+        ? session.user.name ?? "Admin"
+        : session.user.name?.trim().split(/\s+/)[0] || "Student";
 
   return (
     <SidebarProvider>

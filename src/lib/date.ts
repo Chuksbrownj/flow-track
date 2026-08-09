@@ -27,6 +27,43 @@ export function daysAgoStr(days: number) {
   return todayStr(new Date(Date.now() - days * 86400000));
 }
 
+/** Training days of the week: Monday, Wednesday, Friday (getUTCDay: 0 = Sunday). */
+export const TRAINING_DAYS = [1, 3, 5] as const;
+
+/** True when the given date (YYYY-MM-DD or Date) is a training day. */
+export function isTrainingDay(value: Date | string): boolean {
+  const date = typeof value === "string" ? new Date(`${value}T00:00:00.000Z`) : value;
+  return (TRAINING_DAYS as readonly number[]).includes(date.getUTCDay());
+}
+
+/** True when today is a training day. */
+export function isTodayTrainingDay(now = new Date()): boolean {
+  return isTrainingDay(now);
+}
+
+/**
+ * Monday of the week containing the given date, as YYYY-MM-DD.
+ * Used as the week key for the weekly score sheet.
+ */
+export function weekKey(date: Date | string = new Date()): string {
+  const parsed =
+    typeof date === "string" ? new Date(`${date}T00:00:00.000Z`) : new Date(date);
+  const day = parsed.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1; // days since Monday
+  const monday = new Date(
+    Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate() - diff)
+  );
+  return `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    monday.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+/** Human-friendly label for a week key, e.g. "Week of 10 Mar 2026". */
+export function formatWeek(week: string | null | undefined): string {
+  if (!week) return "—";
+  return `Week of ${formatDate(week)}`;
+}
+
 export function currentMonth(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");

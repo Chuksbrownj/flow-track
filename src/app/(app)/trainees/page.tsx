@@ -9,7 +9,7 @@ export const metadata = { title: "Trainees" };
 
 export default async function TraineesPage() {
   const user = await requireStaff();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "master_admin";
 
   const [rows, changeLogs] = await Promise.all([
     db().select().from(trainees).orderBy(asc(trainees.createdAt)),

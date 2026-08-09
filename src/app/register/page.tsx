@@ -8,7 +8,7 @@ export const metadata = { title: "Create account" };
 
 export default async function RegisterPage() {
   const session = await auth();
-  if (session?.user) redirect(session.user.role === "admin" ? "/dashboard" : "/portal");
+  if (session?.user) redirect(session.user.role === "master_admin" ? "/dashboard" : "/portal");
 
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-secondary/70 p-4">
@@ -22,7 +22,8 @@ export default async function RegisterPage() {
           </div>
           <h1 className="text-xl font-semibold tracking-tight">Create account</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Register as a trainee of the OYA / HYPREP Digital Skills Training Programme.
+            Register as a student of the OYA / HYPREP Digital Skills Training Programme using your
+            registration code.
           </p>
         </div>
         <RegisterForm />

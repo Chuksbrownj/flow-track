@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowUpCircle,
   KeyRound,
   Loader2,
   Pencil,
@@ -53,6 +54,7 @@ import {
 import {
   createStaff,
   deleteStaff,
+  promoteToMasterAdmin,
   resetStaffPassword,
   updateStaff,
 } from "@/lib/actions/staff";
@@ -61,7 +63,7 @@ import { TOPIC_LABELS } from "@/lib/topics";
 export type StaffRow = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   topic: string | null;
   createdAt: string;
@@ -103,7 +105,8 @@ export function StaffClient({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Staff</h1>
           <p className="text-sm text-muted-foreground">
-            Only the master admin can create and manage admins and trainers.
+            Only the master admin can create and manage staff accounts, and promote admins to master
+            admins.
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -131,7 +134,7 @@ export function StaffClient({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            Admins &amp; trainers
+            Admins &amp; master admins
           </CardTitle>
           <CardDescription>
             {staff.length} staff account{staff.length === 1 ? "" : "s"}.
@@ -144,6 +147,7 @@ export function StaffClient({
             <ul className="divide-y">
               {staff.map((row) => {
                 const isSelf = row.id === currentUserId;
+                const isMaster = row.role === "master_admin";
                 return (
                   <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
@@ -152,16 +156,16 @@ export function StaffClient({
                           {row.name}
                           {isSelf ? <span className="text-muted-foreground"> (you)</span> : null}
                         </p>
-                        <Badge variant={row.role === "admin" ? "default" : "secondary"}>
-                          {row.role === "admin" ? "Master admin" : "Trainer"}
+                        <Badge variant={isMaster ? "default" : "secondary"}>
+                          {isMaster ? "Master admin" : "Admin"}
                         </Badge>
-                        {row.role === "trainer" && row.topic ? (
+                        {!isMaster && row.topic ? (
                           <Badge variant="outline">{row.topic}</Badge>
                         ) : null}
                       </div>
-                      <p className="text-xs text-muted-foreground">{row.email}</p>
+                      <p className="text-xs text-muted-foreground">{row.email ?? "—"}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -180,32 +184,70 @@ export function StaffClient({
                         <KeyRound className="h-4 w-4" />
                         Reset password
                       </Button>
-                      {!isSelf && row.role === "trainer" ? (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="gap-1.5 text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete trainer?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {row.name} will lose access to the system. This cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                variant="destructive"
-                                onClick={() => run(() => deleteStaff(row.id))}
+                      {!isSelf && !isMaster ? (
+                        <>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 text-primary"
                               >
+                                <ArrowUpCircle className="h-4 w-4" />
+                                Promote
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Promote {row.name} to master admin?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  They will get the same full access as you, including managing
+                                  staff and seeing the complete audit log. This cannot be undone
+                                  except by another master admin.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() =>
+                                    run(() => promoteToMasterAdmin(row.id), () => router.refresh())
+                                  }
+                                >
+                                  Promote
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
                                 Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete admin?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {row.name} will lose access to the system. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  variant="destructive"
+                                  onClick={() => run(() => deleteStaff(row.id))}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
                       ) : null}
                     </div>
                   </li>
@@ -261,7 +303,7 @@ function CreateStaffForm({
   pending: boolean;
   onSubmit: (formData: FormData) => void;
 }) {
-  const [role, setRole] = useState("trainer");
+  const [role, setRole] = useState("admin");
   const [topic, setTopic] = useState<string>(TOPIC_LABELS[0]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -286,7 +328,7 @@ function CreateStaffForm({
       </div>
       <div className="space-y-2">
         <Label htmlFor="staff-email">Email</Label>
-        <Input id="staff-email" name="email" type="email" required placeholder="trainer@example.com" />
+        <Input id="staff-email" name="email" type="email" required placeholder="admin@example.com" />
       </div>
       <div className="space-y-2">
         <Label>Role</Label>
@@ -295,13 +337,16 @@ function CreateStaffForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="trainer">Trainer</SelectItem>
-            <SelectItem value="admin">Master admin</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="master_admin">Master admin</SelectItem>
           </SelectContent>
         </Select>
         <input type="hidden" name="role" value={role} />
+        <p className="text-xs text-muted-foreground">
+          Admins manage training (attendance, scores, schedule). Master admins also manage staff.
+        </p>
       </div>
-      {role === "trainer" ? (
+      {role === "admin" ? (
         <div className="space-y-2">
           <Label>Topic</Label>
           <Select value={topic} onValueChange={setTopic}>
@@ -374,13 +419,13 @@ function EditStaffForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="trainer">Trainer</SelectItem>
-            <SelectItem value="admin">Master admin</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="master_admin">Master admin</SelectItem>
           </SelectContent>
         </Select>
         <input type="hidden" name="role" value={role} />
       </div>
-      {role === "trainer" ? (
+      {role === "admin" ? (
         <div className="space-y-2">
           <Label>Topic</Label>
           <Select value={topic} onValueChange={setTopic}>

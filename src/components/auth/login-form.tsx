@@ -9,10 +9,12 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { authenticate } from "@/app/login/actions";
 
 export function LoginForm({
-  emailPlaceholder = "you@example.com",
+  identifierLabel = "Email",
+  identifierPlaceholder = "you@example.com",
   buttonLabel = "Sign in",
 }: {
-  emailPlaceholder?: string;
+  identifierLabel?: string;
+  identifierPlaceholder?: string;
   buttonLabel?: string;
 } = {}) {
   const [error, formAction, isPending] = useActionState(authenticate, undefined);
@@ -20,14 +22,15 @@ export function LoginForm({
   return (
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="identifier">{identifierLabel}</Label>
         <Input
-          id="email"
-          name="email"
-          type="email"
-          placeholder={emailPlaceholder}
-          autoComplete="email"
+          id="identifier"
+          name="identifier"
+          type="text"
+          placeholder={identifierPlaceholder}
+          autoComplete="username"
           required
+          autoFocus
         />
       </div>
       <div className="space-y-2">

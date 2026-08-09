@@ -14,7 +14,7 @@ export default async function LoginPage({
   const session = await auth();
   const { changed, registered } = await searchParams;
   if (session?.user) {
-    const isStaff = session.user.role === "admin" || session.user.role === "trainer";
+    const isStaff = session.user.role === "master_admin" || session.user.role === "admin";
     redirect(isStaff ? "/dashboard" : "/portal");
   }
 
@@ -51,9 +51,9 @@ export default async function LoginPage({
             Forgot password?
           </Link>
         </div>
-        <LoginForm />
+        <LoginForm identifierLabel="Registration code" identifierPlaceholder="e.g. 2024001" />
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          New trainee?{" "}
+          New student?{" "}
           <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
             Create an account
           </Link>

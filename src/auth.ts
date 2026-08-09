@@ -4,28 +4,49 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { authConfig } from "@/auth.config";
 import { db } from "@/db/client";
-import { users } from "@/db/schema";
+import { trainees, users } from "@/db/schema";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
       credentials: {
-        email: { label: "Email", type: "email" },
+        identifier: { label: "Email or registration code", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string" ? credentials.email.toLowerCase().trim() : "";
+        const identifier =
+          typeof credentials?.identifier === "string" ? credentials.identifier.trim() : "";
         const password =
           typeof credentials?.password === "string" ? credentials.password : "";
-        if (!email || !password) return null;
+        if (!identifier || !password) return null;
 
-        const [user] = await db()
-          .select()
-          .from(users)
-          .where(eq(users.email, email))
-          .limit(1);
+        // Staff sign in with their email; students sign in with their registration code.
+        let user:
+          | (typeof users.$inferSelect & { topic: string | null })
+          | undefined;
+        if (identifier.includes("@")) {
+          const [row] = await db()
+            .select()
+            .from(users)
+            .where(eq(users.email, identifier.toLowerCase()))
+            .limit(1);
+          user = row;
+        } else {
+          const [trainee] = await db()
+            .select({ userId: trainees.userId })
+            .from(trainees)
+            .where(eq(trainees.registrationNumber, identifier.toUpperCase()))
+            .limit(1);
+          if (trainee?.userId) {
+            const [row] = await db()
+              .select()
+              .from(users)
+              .where(eq(users.id, trainee.userId))
+              .limit(1);
+            user = row;
+          }
+        }
         if (!user) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);

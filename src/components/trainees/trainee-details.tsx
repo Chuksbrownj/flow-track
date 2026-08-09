@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Fingerprint, Loader2, ShieldX } from "lucide-react";
+import { Fingerprint, KeyRound, Loader2, ShieldX } from "lucide-react";
 import { formatDate } from "@/lib/date";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { resetDeviceBinding } from "@/lib/actions/attendance";
+import { resetStudentPassword } from "@/lib/actions/trainees";
 import type { TraineeRow } from "./trainee-form";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -32,6 +43,9 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 export function TraineeDetails({ trainee }: { trainee: TraineeRow }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleReset() {
@@ -43,6 +57,25 @@ export function TraineeDetails({ trainee }: { trainee: TraineeRow }) {
         router.refresh();
       } else {
         toast.error(result.error ?? "Something went wrong.");
+      }
+    });
+  }
+
+  function handlePasswordReset() {
+    setPasswordError(null);
+    if (password.length < 8) {
+      setPasswordError("Password must be at least 8 characters.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await resetStudentPassword(trainee.id, password);
+      if (result.ok) {
+        setResetOpen(false);
+        setPassword("");
+        toast.success("Password reset. Share the new password with the student.");
+        router.refresh();
+      } else {
+        setPasswordError(result.error ?? "Could not reset the password.");
       }
     });
   }
@@ -62,7 +95,7 @@ export function TraineeDetails({ trainee }: { trainee: TraineeRow }) {
         <Field label="Registered" value={formatDate(trainee.createdAt)} />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
             <Fingerprint className="h-4 w-4" />
@@ -89,6 +122,34 @@ export function TraineeDetails({ trainee }: { trainee: TraineeRow }) {
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
+            <KeyRound className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Password</p>
+            <p className="text-xs text-muted-foreground">
+              Set a new sign-in password for this student (e.g. if they forgot it and have no email
+              on file).
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => {
+            setPassword("");
+            setPasswordError(null);
+            setResetOpen(true);
+          }}
+        >
+          <KeyRound className="h-4 w-4" />
+          Reset password
+        </Button>
+      </div>
+
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -111,6 +172,50 @@ export function TraineeDetails({ trainee }: { trainee: TraineeRow }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-primary" />
+              Reset password
+            </DialogTitle>
+            <DialogDescription>
+              Set a new sign-in password for {trainee.fullName}. They will need to use it on their
+              next login.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="student-new-password">New password</Label>
+            <Input
+              id="student-new-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+              autoFocus
+            />
+            {passwordError ? (
+              <p className="text-xs font-medium text-destructive">{passwordError}</p>
+            ) : null}
+          </div>
+          <DialogFooter showCloseButton={false}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetOpen(false)}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handlePasswordReset} disabled={isPending || !password.trim()}>
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              {isPending ? "Resetting..." : "Reset password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { recordAudit } from "@/lib/audit";
 import { validatePassword, validateSignup } from "@/lib/validation";
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -17,62 +18,50 @@ function value(formData: FormData, key: string): string {
 
 export async function logout() {
   const user = await requireUser().catch(() => null);
-  const target = user?.role === "admin" || user?.role === "trainer" ? "/admin/login" : "/login";
+  const target =
+    user?.role === "master_admin" || user?.role === "admin" ? "/admin/login" : "/login";
   await signOut({ redirectTo: target });
 }
 
 const REGISTER_IP_LIMIT = 50; // signups per IP per hour (shared campus networks are normal)
-const REGISTER_EMAIL_LIMIT = 3; // signups per email per hour
+const REGISTER_CODE_LIMIT = 3; // signups per registration code per hour
 const REGISTER_WINDOW_MS = 60 * 60 * 1000;
 
 export async function registerTrainee(formData: FormData): Promise<ActionResult> {
-  const email = value(formData, "email").toLowerCase();
+  const input = {
+    registrationNumber: value(formData, "registrationNumber"),
+    fullName: value(formData, "fullName"),
+    gender: value(formData, "gender"),
+    password: String(formData.get("password") ?? ""),
+  };
+  const confirm = String(formData.get("confirmPassword") ?? "");
+
+  const registrationCode = input.registrationNumber.toUpperCase();
   const ip = await clientIp();
-  const [byIp, byEmail] = await Promise.all([
+  const [byIp, byCode] = await Promise.all([
     rateLimit(`register:ip:${ip}`, REGISTER_IP_LIMIT, REGISTER_WINDOW_MS),
-    email ? rateLimit(`register:email:${email}`, REGISTER_EMAIL_LIMIT, REGISTER_WINDOW_MS) : { ok: true },
+    registrationCode
+      ? rateLimit(`register:code:${registrationCode}`, REGISTER_CODE_LIMIT, REGISTER_WINDOW_MS)
+      : { ok: true },
   ]);
-  if (!byIp.ok || !byEmail.ok) {
+  if (!byIp.ok || !byCode.ok) {
     return {
       ok: false,
       error: "Too many sign-up attempts. Please wait a while and try again.",
     };
   }
 
-  const input = {
-    registrationNumber: value(formData, "registrationNumber").toUpperCase(),
-    fullName: value(formData, "fullName"),
-    email: value(formData, "email").toLowerCase(),
-    phone: value(formData, "phone"),
-    gender: value(formData, "gender"),
-    password: String(formData.get("password") ?? ""),
-  };
-  const confirm = String(formData.get("confirmPassword") ?? "");
-
   const error = validateSignup(input);
   if (error) return { ok: false, error };
   if (input.password !== confirm) return { ok: false, error: "Passwords do not match." };
 
-  const [existingUser] = await db()
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1);
-  const [existingTraineeByEmail] = await db()
-    .select({ id: trainees.id })
-    .from(trainees)
-    .where(eq(trainees.email, input.email))
-    .limit(1);
   const [existingRegistration] = await db()
     .select({ id: trainees.id })
     .from(trainees)
-    .where(eq(trainees.registrationNumber, input.registrationNumber))
+    .where(eq(trainees.registrationNumber, registrationCode))
     .limit(1);
-  if (existingUser || existingTraineeByEmail) {
-    return { ok: false, error: "An account with this email already exists." };
-  }
   if (existingRegistration) {
-    return { ok: false, error: "This registration number is already in use." };
+    return { ok: false, error: "This registration code is already in use." };
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10);
@@ -82,21 +71,28 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
       .insert(users)
       .values({
         name: input.fullName,
-        email: input.email,
         passwordHash,
-        role: "trainee",
+        role: "student",
       })
       .returning({ id: users.id });
     createdUserId = created.id;
 
     await db().insert(trainees).values({
       userId: created.id,
-      registrationNumber: input.registrationNumber,
+      registrationNumber: registrationCode,
       fullName: input.fullName,
-      email: input.email,
-      phone: input.phone,
       gender: input.gender,
+      phone: "",
       status: "pending",
+    });
+
+    await recordAudit({
+      actorId: created.id,
+      actorName: input.fullName,
+      actorRole: "student",
+      action: "created",
+      entityType: "trainee",
+      summary: `${input.fullName} registered with code ${registrationCode} (pending approval)`,
     });
   } catch {
     if (createdUserId) {
@@ -140,7 +136,16 @@ export async function changePassword(formData: FormData): Promise<ActionResult> 
     return { ok: false, error: "Could not update your password. Try again." };
   }
 
-  const isStaff = user.role === "admin" || user.role === "trainer";
+  await recordAudit({
+    actorId: user.id,
+    actorName: user.name ?? null,
+    actorRole: user.role,
+    action: "password_reset",
+    entityType: "auth",
+    summary: "Changed their own password",
+  });
+
+  const isStaff = user.role === "master_admin" || user.role === "admin";
   const target = isStaff ? "/admin/login?changed=1" : "/login?changed=1";
   await signOut({ redirectTo: target });
   return { ok: true };

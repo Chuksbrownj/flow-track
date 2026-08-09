@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarCheck2, Fingerprint, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { CalendarCheck2, CalendarX2, Fingerprint, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ export function ProfileAttendance({
   todayStatus,
   deviceRegistered,
   checkinOpen,
+  trainingDay,
 }: {
   month: string;
   records: CalendarRecord[];
@@ -25,6 +26,8 @@ export function ProfileAttendance({
   deviceRegistered: boolean;
   /** Whether trainees can still self check-in today (before 6pm GMT). */
   checkinOpen: boolean;
+  /** Whether today is a training day (Mon/Wed/Fri). */
+  trainingDay: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -72,20 +75,21 @@ export function ProfileAttendance({
   }
 
   // Automatic check-in when the trainee opens the attendance page (their sign-in
-  // moment), but only while the 6pm window is open and this device is already
-  // registered. Otherwise they get the password prompt to register the device.
+  // moment), but only while the 6pm window is open, today is a training day and
+  // this device is already registered. Otherwise they get the password prompt to
+  // register the device.
   useEffect(() => {
     if (autoRan.current) return;
     autoRan.current = true;
-    if (!todayStatus && deviceRegistered && checkinOpen) {
+    if (!todayStatus && deviceRegistered && checkinOpen && trainingDay) {
       const id = setTimeout(() => attemptCheckIn(true), 0);
       return () => clearTimeout(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canCheckIn = !todayStatus && checkinOpen;
-  const showPasswordPrompt = checkinOpen && (needsPassword || (!deviceRegistered && !todayStatus));
+  const canCheckIn = !todayStatus && checkinOpen && trainingDay;
+  const showPasswordPrompt = checkinOpen && trainingDay && (needsPassword || (!deviceRegistered && !todayStatus));
 
   return (
     <Card>
@@ -96,21 +100,22 @@ export function ProfileAttendance({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
-              <Fingerprint className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">Today</p>
-              <p className="text-xs text-muted-foreground">
-                {todayStatus
-                  ? "Check-in recorded for today."
-                  : !checkinOpen
-                    ? "Sign-in for today closed at 6pm GMT. Contact a trainer if you need help."
-                    : showPasswordPrompt
-                      ? "Sign in with your account password to register this device."
-                      : "Checking in from this device..."}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-4">            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
+                {trainingDay ? <Fingerprint className="h-4 w-4" /> : <CalendarX2 className="h-4 w-4" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium">Today</p>
+                <p className="text-xs text-muted-foreground">
+                  {!trainingDay
+                    ? "Today is not a training day. Attendance is taken on Mondays, Wednesdays and Fridays."
+                    : todayStatus
+                      ? "Check-in recorded for today."
+                      : !checkinOpen
+                        ? "Sign-in for today closed at 6pm GMT. Contact a trainer if you need help."
+                        : showPasswordPrompt
+                          ? "Sign in with your account password to register this device."
+                          : "Checking in from this device..."}
               </p>
             </div>
           </div>
@@ -152,16 +157,20 @@ export function ProfileAttendance({
                 >
                   {busy || isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : !trainingDay ? (
+                    <CalendarX2 className="h-4 w-4" />
                   ) : (
                     <ShieldCheck className="h-4 w-4" />
                   )}
                   {busy || isPending
                     ? "Checking in..."
-                    : todayStatus
-                      ? "Checked in"
-                      : checkinOpen
-                        ? "Check in"
-                        : "Closed at 6pm GMT"}
+                    : !trainingDay
+                      ? "Not a training day"
+                      : todayStatus
+                        ? "Checked in"
+                        : checkinOpen
+                          ? "Check in"
+                          : "Closed at 6pm GMT"}
                 </Button>
               )}
             </div>

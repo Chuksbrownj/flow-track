@@ -38,29 +38,7 @@ export function RegisterForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="fullName">Full name</Label>
-        <Input
-          id="fullName"
-          name="fullName"
-          placeholder="e.g. Ada Obi"
-          required
-          minLength={3}
-          autoComplete="name"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          placeholder="you@example.com"
-          required
-          autoComplete="email"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="registrationNumber">Registration number</Label>
+        <Label htmlFor="registrationNumber">Registration code</Label>
         <Input
           id="registrationNumber"
           name="registrationNumber"
@@ -74,36 +52,32 @@ export function RegisterForm() {
           autoComplete="off"
         />
         <p className="text-xs text-muted-foreground">
-          Enter the numeric registration number you were issued with.
+          Enter the registration code you were issued with. You&apos;ll use it to sign in.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Gender</Label>
-          <Select value={gender} onValueChange={setGender}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select gender" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Male">Male</SelectItem>
-              <SelectItem value="Female">Female</SelectItem>
-            </SelectContent>
-          </Select>
-          <input type="hidden" name="gender" value={gender} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="phone">Phone</Label>
-          <Input
-            id="phone"
-            name="phone"
-            type="tel"
-            placeholder="e.g. 08012345678"
-            required
-            minLength={7}
-            maxLength={20}
-            autoComplete="tel"
-          />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="fullName">Full name</Label>
+        <Input
+          id="fullName"
+          name="fullName"
+          placeholder="e.g. Ada Obi"
+          required
+          minLength={3}
+          autoComplete="name"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Gender</Label>
+        <Select value={gender} onValueChange={setGender}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select gender" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Male">Male</SelectItem>
+            <SelectItem value="Female">Female</SelectItem>
+          </SelectContent>
+        </Select>
+        <input type="hidden" name="gender" value={gender} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -137,7 +111,8 @@ export function RegisterForm() {
         {isPending ? "Creating account..." : "Create account"}
       </Button>
       <p className="text-center text-xs text-muted-foreground">
-        Your registration will be confirmed by a trainer before you can sign in.
+        Your registration will be confirmed by a trainer before you can sign in. You can add your
+        email and phone number later from your profile.
       </p>
     </form>
   );

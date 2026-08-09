@@ -2,19 +2,26 @@ import { asc, count, desc, eq, ne } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessments, examQuestions, exams, examSubmissions, trainees, users } from "@/db/schema";
-import { AssessmentsClient } from "@/components/assessments/assessments-client";
+import { AssessmentsClient, type ScoreRow } from "@/components/assessments/assessments-client";
 import { ExamsClient, type ExamListItem, type SubmissionRow } from "@/components/assessments/exams-client";
 import { TraineeExams, type TraineeExamRow } from "@/components/assessments/trainee-exams";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatWeek, weekKey } from "@/lib/date";
 
 export const metadata = { title: "Assessments" };
 
-export default async function AssessmentsPage() {
+const WEEK_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export default async function AssessmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; week?: string }>;
+}) {
   const user = await requireUser();
   const database = db();
 
-  // ─── Trainee: take exams opened by staff ────────────────────────────────
-  if (user.role === "trainee") {
+  // ─── Student: take exams opened by staff ────────────────────────────────
+  if (user.role === "student") {
     const [trainee] = await database
       .select({ id: trainees.id })
       .from(trainees)
@@ -84,9 +91,10 @@ export default async function AssessmentsPage() {
     );
   }
 
-  // ─── Staff: exam management + score sheet ───────────────────────────────
+  // ─── Staff: exam management + weekly score sheet ────────────────────────
+  const { tab, week } = await searchParams;
   const staffId = user.id ?? "";
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "master_admin";
   const examWhere = isAdmin ? undefined : eq(exams.createdById, staffId);
 
   const [examRows, questionCountRows, submissionRows, traineeRows, staffRows, writtenRows] =
@@ -160,8 +168,15 @@ export default async function AssessmentsPage() {
     };
   });
 
-  // Manual score sheet data (unchanged).
-  const [scoreTrainees, scoreRows] = await Promise.all([
+  // ─── Weekly score sheet data ────────────────────────────────────────────
+  const currentWeek = weekKey();
+  const selectedWeek = week && WEEK_PATTERN.test(week) ? week : currentWeek;
+
+  const [weekRows, scoreTrainees, scoreRows] = await Promise.all([
+    database
+      .select({ week: assessments.week })
+      .from(assessments)
+      .groupBy(assessments.week),
     database
       .select({
         id: trainees.id,
@@ -172,16 +187,21 @@ export default async function AssessmentsPage() {
       .from(trainees)
       .where(ne(trainees.status, "pending"))
       .orderBy(asc(trainees.fullName)),
-    database
-      .select({
-        traineeId: assessments.traineeId,
-        graphicDesign: assessments.graphicDesign,
-        animation: assessments.animation,
-        dataAnalysis: assessments.dataAnalysis,
-        hpLife: assessments.hpLife,
-      })
-      .from(assessments),
+    database.select().from(assessments).where(eq(assessments.week, selectedWeek)),
   ]);
+
+  const weekSet = new Set<string>([currentWeek, ...weekRows.map((row) => row.week)]);
+  const weeks = [...weekSet].sort().reverse().map((value) => ({ value, label: formatWeek(value) }));
+
+  const initialAssessments: Record<string, ScoreRow> = {};
+  for (const row of scoreRows) {
+    initialAssessments[row.traineeId] = {
+      graphicDesign: row.graphicDesign,
+      animation: row.animation,
+      dataAnalysis: row.dataAnalysis,
+      hpLife: row.hpLife,
+    };
+  }
 
   return (
     <div className="space-y-6">
@@ -189,12 +209,12 @@ export default async function AssessmentsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Assessments</h1>
         <p className="text-sm text-muted-foreground">
           {isAdmin
-            ? "Create and manage exams, grade written answers, and record scores."
-            : `Manage exams for your topic${user.topic ? ` (${user.topic})` : ""} and record scores.`}
+            ? "Create and manage exams, grade written answers, and record weekly scores."
+            : `Manage exams for your topic${user.topic ? ` (${user.topic})` : ""} and record weekly scores.`}
         </p>
       </div>
 
-      <Tabs defaultValue="exams">
+      <Tabs defaultValue={tab === "scores" ? "scores" : "exams"}>
         <TabsList>
           <TabsTrigger value="exams">Exams</TabsTrigger>
           <TabsTrigger value="scores">Score sheet</TabsTrigger>
@@ -208,14 +228,11 @@ export default async function AssessmentsPage() {
         </TabsContent>
         <TabsContent value="scores" className="pt-4">
           <AssessmentsClient
+            key={selectedWeek}
             trainees={scoreTrainees}
-            initialAssessments={scoreRows.map((row) => ({
-              traineeId: row.traineeId,
-              graphicDesign: row.graphicDesign,
-              animation: row.animation,
-              dataAnalysis: row.dataAnalysis,
-              hpLife: row.hpLife,
-            }))}
+            initialAssessments={initialAssessments}
+            week={selectedWeek}
+            weeks={weeks}
           />
         </TabsContent>
       </Tabs>

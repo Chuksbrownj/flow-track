@@ -21,7 +21,7 @@ export const metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  if (user.role === "admin") redirect("/dashboard");
+  if (user.role === "master_admin" || user.role === "admin") redirect("/dashboard");
 
   const [trainee] = await db()
     .select({

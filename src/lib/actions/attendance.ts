@@ -10,6 +10,8 @@ import { attendanceEditable, isCheckinOpen, todayStr } from "@/lib/date";
 import { isUuid } from "@/lib/validation";
 import { clientIp } from "@/lib/rate-limit";
 import { recordTraineeChange } from "@/lib/trainee-logs";
+import { recordAudit } from "@/lib/audit";
+import { isTrainingDay } from "@/lib/date";
 
 export type ActionResult = {
   ok: boolean;
@@ -42,7 +44,7 @@ export async function checkInAttendance(
   password?: string
 ): Promise<ActionResult> {
   const user = await requireUser();
-  if (user.role !== "trainee") return { ok: false, error: "Only trainees can check in." };
+  if (user.role !== "student") return { ok: false, error: "Only students can check in." };
 
   const fp = fingerprint.trim().toLowerCase();
   if (!isFingerprint(fp)) return { ok: false, error: "Device signature is invalid." };
@@ -70,6 +72,14 @@ export async function checkInAttendance(
       return { ok: true, error: undefined, message: `Attendance already recorded as ${existing.status}.` };
     }
     return { ok: true, error: undefined, message: "Already checked in — waiting for trainer confirmation." };
+  }
+
+  // Attendance is only taken on training days (Mon/Wed/Fri).
+  if (!isTrainingDay(day)) {
+    return {
+      ok: false,
+      error: "Today is not a training day. Attendance is taken on Mondays, Wednesdays and Fridays.",
+    };
   }
 
   // Sign-in stays open until 6pm GMT.
@@ -138,6 +148,15 @@ export async function checkInAttendance(
     return { ok: false, error: "Could not check in. Try again." };
   }
 
+  await recordAudit({
+    actorId: user.id,
+    actorName: user.name ?? null,
+    actorRole: "student",
+    action: "checkin",
+    entityType: "attendance",
+    summary: `${trainee.fullName} submitted a check-in for ${day} (pending confirmation)`,
+  });
+
   revalidatePath("/profile");
   revalidatePath("/portal");
   revalidatePath("/attendance");
@@ -187,6 +206,15 @@ export async function confirmAttendance(
     return { ok: false, error: "Could not confirm attendance. Try again." };
   }
 
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: admin.role,
+    action: "attendance_confirmed",
+    entityType: "attendance",
+    summary: `${status === "present" ? "Confirmed" : "Rejected"} a check-in for ${day}`,
+  });
+
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
   revalidatePath("/profile");
@@ -214,6 +242,16 @@ export async function resetDeviceBinding(traineeId: string): Promise<ActionResul
     actorId: staff.id,
     actorName: staff.name ?? null,
     action: "device_reset",
+  });
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "device_reset",
+    entityType: "trainee",
+    entityId: traineeId,
+    summary: "Reset a student's device binding",
   });
 
   revalidatePath("/attendance");
@@ -281,6 +319,15 @@ export async function markAttendance(
   } catch {
     return { ok: false, error: "Could not save attendance. Try again." };
   }
+
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: admin.role,
+    action: "attendance_marked",
+    entityType: "attendance",
+    summary: `Manually marked a student ${status} for ${day}`,
+  });
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { adminNavItems, traineeNavItems, trainerNavItems } from "./nav-items";
+import { adminNavItems, masterNavItems, traineeNavItems } from "./nav-items";
 
 export function SidebarNav({
   role,
@@ -14,7 +14,11 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
   const items =
-    role === "admin" ? adminNavItems : role === "trainer" ? trainerNavItems : traineeNavItems;
+    role === "master_admin"
+      ? masterNavItems
+      : role === "admin"
+        ? adminNavItems
+        : traineeNavItems;
 
   return (
     <nav className="flex flex-col gap-1">

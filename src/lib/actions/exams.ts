@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { assessments, examQuestions, exams, examSubmissions, trainees } from "@/db/schema";
+import { examQuestions, exams, examSubmissions, trainees } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { isValidTopic } from "@/lib/topics";
 import { parseQuestionFile } from "@/lib/assessment-import";
 import { isUuid } from "@/lib/validation";
+import { recordAudit } from "@/lib/audit";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -42,13 +43,6 @@ export type ExamSession = {
   result?: ExamResult;
 };
 
-const TOPIC_TO_COLUMN: Record<string, "graphicDesign" | "animation" | "dataAnalysis" | "hpLife"> = {
-  "Graphic Design": "graphicDesign",
-  "2D & 3D Animation": "animation",
-  "Data Analysis": "dataAnalysis",
-  "HP LIFE": "hpLife",
-};
-
 function isExamOpen(
   exam: { status: string; opensAt: Date | null; closesAt: Date | null },
   now = new Date()
@@ -65,21 +59,6 @@ function percentOf(score: number | null, totalPoints: number): number | null {
   return Math.round((score / totalPoints) * 100);
 }
 
-async function updateScoreSheet(traineeId: string, topic: string, percent: number) {
-  const column = TOPIC_TO_COLUMN[topic];
-  if (!column) return;
-  const [existing] = await db()
-    .select({ id: assessments.id })
-    .from(assessments)
-    .where(eq(assessments.traineeId, traineeId))
-    .limit(1);
-  if (existing) {
-    await db().update(assessments).set({ [column]: percent }).where(eq(assessments.id, existing.id));
-  } else {
-    await db().insert(assessments).values({ traineeId, [column]: percent });
-  }
-}
-
 async function canManageExam(
   examId: string,
   staff: { id: string; role: string },
@@ -87,7 +66,7 @@ async function canManageExam(
 ) {
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
   if (!exam) return { exam: null as null, error: "Exam not found." };
-  if (staff.role === "trainer" && exam.createdById !== staff.id) {
+  if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { exam: null as null, error: "You can only manage exams you created." };
   }
   if (requireDraft && exam.status !== "draft") {
@@ -110,7 +89,7 @@ export async function createExam(formData: FormData): Promise<ActionResult & { i
 
   if (title.length < 3) return { ok: false, error: "Title is required (at least 3 characters)." };
   if (!isValidTopic(topic)) return { ok: false, error: "Please choose a valid topic." };
-  if (staff.role === "trainer" && staff.topic && topic !== staff.topic) {
+  if (staff.role === "admin" && staff.topic && topic !== staff.topic) {
     return { ok: false, error: `You can only create exams for your topic (${staff.topic}).` };
   }
   const durationMinutes = Number(durationRaw);
@@ -130,6 +109,15 @@ export async function createExam(formData: FormData): Promise<ActionResult & { i
         createdById: staff.id,
       })
       .returning({ id: exams.id });
+    await recordAudit({
+      actorId: staff.id,
+      actorName: staff.name ?? null,
+      actorRole: staff.role,
+      action: "exam_created",
+      entityType: "exam",
+      entityId: created.id,
+      summary: `Created exam “${title}” (${topic})`,
+    });
     revalidatePath("/assessments");
     return { ok: true, id: created.id };
   } catch {
@@ -217,6 +205,16 @@ export async function updateExamDetails(examId: string, formData: FormData): Pro
     return { ok: false, error: "Could not update the exam. Try again." };
   }
 
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_updated",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Updated exam “${title}”`,
+  });
+
   revalidatePath("/assessments");
   return { ok: true };
 }
@@ -232,6 +230,16 @@ export async function deleteExam(examId: string): Promise<ActionResult> {
   } catch {
     return { ok: false, error: "Could not delete the exam. Try again." };
   }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_deleted",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Deleted exam “${exam.title}”`,
+  });
 
   revalidatePath("/assessments");
   return { ok: true };
@@ -269,6 +277,16 @@ export async function openExam(examId: string, closesAt: string): Promise<Action
     return { ok: false, error: "Could not open the exam. Try again." };
   }
 
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_opened",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Opened exam “${exam.title}”`,
+  });
+
   revalidatePath("/assessments");
   return { ok: true, message: "Exam opened. Trainees can now take it within the set window." };
 }
@@ -287,6 +305,16 @@ export async function closeExam(examId: string): Promise<ActionResult> {
   } catch {
     return { ok: false, error: "Could not close the exam. Try again." };
   }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_closed",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Closed exam “${exam.title}”`,
+  });
 
   revalidatePath("/assessments");
   return { ok: true };
@@ -362,7 +390,7 @@ async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string)
 export async function startExam(examId: string): Promise<ActionResult & { session?: ExamSession }> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
+  if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
@@ -413,7 +441,7 @@ export async function saveAnswer(
 ): Promise<ActionResult> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
+  if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
@@ -460,7 +488,7 @@ export async function saveAnswer(
 export async function recordViolation(examId: string): Promise<ActionResult & { violations?: number }> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
+  if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
   const [trainee] = await db()
     .select({ id: trainees.id })
@@ -496,7 +524,7 @@ export async function recordViolation(examId: string): Promise<ActionResult & { 
 export async function submitExam(examId: string): Promise<ActionResult & { result?: ExamResult }> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  if (user.role !== "trainee") return { ok: false, error: "Only trainees can take exams." };
+  if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
@@ -561,9 +589,6 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
       })
       .where(eq(examSubmissions.id, submission.id));
 
-    if (percent !== null) {
-      await updateScoreSheet(trainee.id, exam.topic, percent);
-    }
   } catch {
     return { ok: false, error: "Could not submit the exam. Try again." };
   }
@@ -595,7 +620,7 @@ export async function gradeWritten(
 
   const [exam] = await db().select().from(exams).where(eq(exams.id, submission.examId)).limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
-  if (staff.role === "trainer" && exam.createdById !== staff.id) {
+  if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { ok: false, error: "You can only grade exams you created." };
   }
 
@@ -618,9 +643,6 @@ export async function gradeWritten(
     writtenScore += value;
   }
 
-  const finalScore = (submission.autoScore ?? 0) + writtenScore;
-  const percent = percentOf(finalScore, submission.totalPoints);
-
   try {
     await db()
       .update(examSubmissions)
@@ -633,12 +655,19 @@ export async function gradeWritten(
       })
       .where(eq(examSubmissions.id, submissionId));
 
-    if (percent !== null) {
-      await updateScoreSheet(submission.traineeId, exam.topic, percent);
-    }
   } catch {
     return { ok: false, error: "Could not save the grades. Try again." };
   }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_graded",
+    entityType: "exam",
+    entityId: exam.id,
+    summary: `Graded written answers for exam “${exam.title}”`,
+  });
 
   revalidatePath("/assessments");
   revalidatePath("/portal");
@@ -661,7 +690,7 @@ export async function overrideSubmission(submissionId: string): Promise<ActionRe
   if (!isExamOpen(exam)) {
     return { ok: false, error: "You can only override while the exam window is still open." };
   }
-  if (staff.role === "trainer" && exam.createdById !== staff.id) {
+  if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { ok: false, error: "You can only override exams you created." };
   }
 
@@ -680,6 +709,16 @@ export async function overrideSubmission(submissionId: string): Promise<ActionRe
   } catch {
     return { ok: false, error: "Could not override the submission. Try again." };
   }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_override",
+    entityType: "exam",
+    entityId: exam.id,
+    summary: `Granted an override for exam “${exam.title}”`,
+  });
 
   revalidatePath("/assessments");
   return { ok: true, message: "Override granted. The trainee can resume where they left off." };

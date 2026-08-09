@@ -10,6 +10,7 @@ import {
   attendanceEditable,
   currentMonth,
   isCheckinOpen,
+  isTrainingDay,
   monthRange,
   todayStr,
 } from "@/lib/date";
@@ -33,7 +34,7 @@ export default async function AttendancePage({
   await settleAttendance();
 
   // Trainee self-service view (their own check-in page).
-  if (user.role === "trainee") {
+  if (user.role === "student") {
     const { month } = await searchParams;
     const monthParam = validMonth(month);
     const { start, end } = monthRange(monthParam);
@@ -99,12 +100,13 @@ export default async function AttendancePage({
           todayStatus={todayRow[0]?.status ?? null}
           deviceRegistered={!!trainee.deviceFingerprint}
           checkinOpen={isCheckinOpen()}
+          trainingDay={isTrainingDay(todayStr())}
         />
       </div>
     );
   }
 
-  // Staff management view (master admin + trainers).
+  // Staff management view (master admin + admins).
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const monthParam = validMonth(month);
@@ -151,6 +153,7 @@ export default async function AttendancePage({
       date={day}
       month={monthParam}
       editable={editable}
+      trainingDay={isTrainingDay(day)}
       trainees={traineeRows}
       initialRecords={recordRows.map((row) => ({
         id: row.traineeId,

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronLeft, ChevronRight, Clock3, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isTrainingDay } from "@/lib/date";
 
 export type CalendarRecord = { date: string; status: string };
 
@@ -105,6 +106,8 @@ export function MonthCalendar({
           const isSelected = selectedDate === date;
           const isToday = date === todayStr;
 
+          const training = isTrainingDay(date);
+
           if (mode === "trainee") {
             const status =
               counts &&
@@ -118,7 +121,7 @@ export function MonthCalendar({
             return (
               <div
                 key={date}
-                className={`flex aspect-square flex-col items-center justify-center rounded-md border text-xs ${
+                className={`relative flex aspect-square flex-col items-center justify-center rounded-md border text-xs ${
                   status === "present"
                     ? "border-primary/30 bg-primary/10 text-primary"
                     : status === "pending"
@@ -138,6 +141,7 @@ export function MonthCalendar({
                     <X className="h-3 w-3" />
                   )
                 ) : null}
+                {training ? <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-primary/60" /> : null}
               </div>
             );
           }
@@ -167,7 +171,11 @@ export function MonthCalendar({
                     </>
                   ) : null}
                 </span>
-              ) : null}
+              ) : (
+                <span className="flex h-3 items-end">
+                  {training ? <span className="h-1 w-1 rounded-full bg-primary/50" /> : null}
+                </span>
+              )}
             </button>
           );
         })}

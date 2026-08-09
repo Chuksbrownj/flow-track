@@ -1,5 +1,5 @@
 import { asc, eq, or } from "drizzle-orm";
-import { requireAdmin } from "@/lib/auth-guard";
+import { requireMasterAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { StaffClient } from "@/components/staff/staff-client";
@@ -7,12 +7,12 @@ import { StaffClient } from "@/components/staff/staff-client";
 export const metadata = { title: "Staff" };
 
 export default async function StaffPage() {
-  const admin = await requireAdmin();
+  const admin = await requireMasterAdmin();
 
   const rows = await db()
     .select()
     .from(users)
-    .where(or(eq(users.role, "admin"), eq(users.role, "trainer")))
+    .where(or(eq(users.role, "admin"), eq(users.role, "master_admin")))
     .orderBy(asc(users.role), asc(users.name));
 
   return (

@@ -10,7 +10,7 @@ export const metadata = { title: "Forgot password" };
 export default async function ForgotPasswordPage() {
   const session = await auth();
   if (session?.user) {
-    const isStaff = session.user.role === "admin" || session.user.role === "trainer";
+    const isStaff = session.user.role === "master_admin" || session.user.role === "admin";
     redirect(isStaff ? "/dashboard" : "/portal");
   }
 
@@ -26,7 +26,8 @@ export default async function ForgotPasswordPage() {
           </div>
           <h1 className="text-xl font-semibold tracking-tight">Forgot password</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Enter your email and we&apos;ll send you a link to reset your password.
+            Enter your email or registration code and we&apos;ll send you a link to reset your
+            password.
           </p>
         </div>
         <ForgotPasswordForm />

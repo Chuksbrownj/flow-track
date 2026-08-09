@@ -12,9 +12,11 @@ import {
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  /** Nullable — students register without an email and add one later from their profile. */
+  email: text("email").unique(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role").notNull().default("admin"),
+  /** master_admin | admin | student */
+  role: text("role").notNull().default("student"),
   topic: text("topic"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -53,19 +55,24 @@ export const attendance = pgTable(
   (t) => [uniqueIndex("attendance_trainee_date_idx").on(t.traineeId, t.date)]
 );
 
-export const assessments = pgTable("assessments", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  traineeId: uuid("trainee_id")
-    .notNull()
-    .references(() => trainees.id, { onDelete: "cascade" })
-    .unique(),
-  graphicDesign: integer("graphic_design"),
-  animation: integer("animation"),
-  dataAnalysis: integer("data_analysis"),
-  hpLife: integer("hp_life"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const assessments = pgTable(
+  "assessments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    traineeId: uuid("trainee_id")
+      .notNull()
+      .references(() => trainees.id, { onDelete: "cascade" }),
+    /** Monday of the week this score sheet row belongs to. */
+    week: date("week").notNull(),
+    graphicDesign: integer("graphic_design"),
+    animation: integer("animation"),
+    dataAnalysis: integer("data_analysis"),
+    hpLife: integer("hp_life"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("assessments_trainee_week_idx").on(t.traineeId, t.week)]
+);
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -160,6 +167,20 @@ export const trainingSchedule = pgTable("training_schedule", {
   startTime: text("start_time").notNull(),
   endTime: text("end_time").notNull(),
   description: text("description"),
+  /** External Google Form where students submit work for this training day. */
+  googleFormUrl: text("google_form_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorName: text("actor_name"),
+  actorRole: text("actor_role"),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id"),
+  summary: text("summary").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -187,3 +208,4 @@ export type Trainee = typeof trainees.$inferSelect;
 export type Attendance = typeof attendance.$inferSelect;
 export type Assessment = typeof assessments.$inferSelect;
 export type TrainingSession = typeof trainingSchedule.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;

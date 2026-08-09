@@ -34,7 +34,7 @@ async function main() {
     name,
     email,
     passwordHash,
-    role: "admin",
+    role: "master_admin",
   });
   console.log(`Admin user created: ${email}`);
 }

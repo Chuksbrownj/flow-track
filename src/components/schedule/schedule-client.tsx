@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,11 +47,13 @@ function SessionCard({
   onEdit,
   onDelete,
   compact = false,
+  readOnly = false,
 }: {
   session: SessionRow;
   onEdit: (session: SessionRow) => void;
   onDelete: (session: SessionRow) => void;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border bg-card p-4">
@@ -70,27 +72,47 @@ function SessionCard({
           {session.description ? (
             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{session.description}</p>
           ) : null}
+          {session.googleFormUrl ? (
+            <a
+              href={session.googleFormUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Submit assignment
+            </a>
+          ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 gap-1">
-        <Button variant="ghost" size="icon" onClick={() => onEdit(session)} aria-label="Edit session">
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-destructive"
-          onClick={() => onDelete(session)}
-          aria-label="Delete session"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      {readOnly ? null : (
+        <div className="flex shrink-0 gap-1">
+          <Button variant="ghost" size="icon" onClick={() => onEdit(session)} aria-label="Edit session">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive"
+            onClick={() => onDelete(session)}
+            aria-label="Delete session"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-export function ScheduleClient({ initialSessions }: { initialSessions: SessionRow[] }) {
+export function ScheduleClient({
+  initialSessions,
+  readOnly = false,
+}: {
+  initialSessions: SessionRow[];
+  /** Students see the schedule without edit controls. */
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const sessions = initialSessions;
   const [addOpen, setAddOpen] = useState(false);
@@ -127,12 +149,18 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Training Schedule</h1>
-          <p className="text-sm text-muted-foreground">Plan and manage training sessions.</p>
+          <p className="text-sm text-muted-foreground">
+            {readOnly
+              ? "Training days are Mondays, Wednesdays and Fridays. Use the submission form to send your work."
+              : "Plan and manage training sessions."}
+          </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add session
-        </Button>
+        {!readOnly ? (
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add session
+          </Button>
+        ) : null}
       </div>
 
       {sessions.length === 0 ? (
@@ -143,12 +171,18 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
             </div>
             <div>
               <p className="font-medium">No sessions scheduled</p>
-              <p className="text-sm text-muted-foreground">Add your first training session to get started.</p>
+              <p className="text-sm text-muted-foreground">
+                {readOnly
+                  ? "Check back later for your training schedule."
+                  : "Add your first training session to get started."}
+              </p>
             </div>
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add session
-            </Button>
+            {!readOnly ? (
+              <Button onClick={() => setAddOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add session
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       ) : (
@@ -177,6 +211,7 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
                         onEdit={setEditSession}
                         onDelete={setDeleteTarget}
                         compact
+                        readOnly={readOnly}
                       />
                     ))}
                   </div>
@@ -195,6 +230,7 @@ export function ScheduleClient({ initialSessions }: { initialSessions: SessionRo
                     session={session}
                     onEdit={setEditSession}
                     onDelete={setDeleteTarget}
+                    readOnly={readOnly}
                   />
                 ))}
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   CalendarDays,
+  CalendarX2,
   CheckCircle2,
   Loader2,
   Search,
@@ -81,6 +82,7 @@ export function AttendanceClient({
   date,
   month,
   editable,
+  trainingDay,
   trainees,
   initialRecords,
   monthRecords,
@@ -89,6 +91,8 @@ export function AttendanceClient({
   month: string;
   /** Whether attendance for the selected date can still be changed (72h window). */
   editable: boolean;
+  /** Whether the selected date is a training day (Mon/Wed/Fri). */
+  trainingDay: boolean;
   trainees: TraineeOption[];
   initialRecords: AttendanceRecord[];
   monthRecords: MonthRecord[];
@@ -234,6 +238,16 @@ export function AttendanceClient({
         <Stat label="Pending confirmation" value={pending} className="text-gold-foreground" />
         <Stat label="Attendance rate" value={percentage} />
       </div>
+
+      {!trainingDay ? (
+        <div className="flex items-start gap-2 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-gold-foreground">
+          <CalendarX2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {date} is not a training day. Attendance is only taken on Mondays, Wednesdays and
+            Fridays — records for other days are not counted.
+          </span>
+        </div>
+      ) : null}
 
       {!editable ? (
         <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-gold-foreground">

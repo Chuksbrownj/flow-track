@@ -15,7 +15,9 @@ export default async function AdminLoginPage({
   const session = await auth();
   const { changed } = await searchParams;
   if (session?.user) {
-    redirect(session.user.role === "admin" || session.user.role === "trainer" ? "/dashboard" : "/portal");
+    redirect(
+      session.user.role === "master_admin" || session.user.role === "admin" ? "/dashboard" : "/portal"
+    );
   }
 
   return (
@@ -48,7 +50,7 @@ export default async function AdminLoginPage({
         </div>
         <LoginForm buttonLabel="Sign in to dashboard" />
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Are you a trainee?{" "}
+          Are you a student?{" "}
           <Link href="/login" className="font-medium text-primary underline-offset-3 hover:underline">
             Sign in here
           </Link>

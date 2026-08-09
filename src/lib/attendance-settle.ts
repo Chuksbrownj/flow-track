@@ -1,7 +1,7 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { attendance, trainees } from "@/db/schema";
-import { currentMonth, daysAgoStr, isCheckinOpen, todayStr } from "@/lib/date";
+import { currentMonth, daysAgoStr, isCheckinOpen, isTrainingDay, todayStr } from "@/lib/date";
 
 /**
  * Brings attendance records in line with the daily rules (idempotent):
@@ -26,19 +26,20 @@ export async function settleAttendance() {
 
   // Days whose sign-in window has closed: every day of the current month up
   // to yesterday, plus today once 6pm GMT has passed.
+  // Only training days (Mon/Wed/Fri) get attendance records. Non-training days
+  // stay blank — no records, no auto-absents.
   const closedDays: string[] = [];
   const [y, m] = currentMonth().split("-").map(Number);
   const cursor = new Date(Date.UTC(y, (m ?? 1) - 1, 1));
   const end = new Date(`${yesterday}T00:00:00.000Z`);
   while (cursor.getTime() <= end.getTime()) {
-    closedDays.push(
-      `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}-${String(
-        cursor.getUTCDate()
-      ).padStart(2, "0")}`
-    );
+    const day = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}-${String(
+      cursor.getUTCDate()
+    ).padStart(2, "0")}`;
+    if (isTrainingDay(day)) closedDays.push(day);
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
-  if (!isCheckinOpen()) closedDays.push(today);
+  if (!isCheckinOpen() && isTrainingDay(today)) closedDays.push(today);
 
   if (closedDays.length === 0) return;
 
