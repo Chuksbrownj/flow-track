@@ -5,7 +5,7 @@ import { and, asc, eq, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { examQuestions, exams, examSubmissions, trainees } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
-import { isValidTopic } from "@/lib/topics";
+import { isValidCourse } from "@/lib/courses";
 import { parseQuestionFile } from "@/lib/assessment-import";
 import { isUuid } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
@@ -88,9 +88,9 @@ export async function createExam(formData: FormData): Promise<ActionResult & { i
   const description = value(formData, "description");
 
   if (title.length < 3) return { ok: false, error: "Title is required (at least 3 characters)." };
-  if (!isValidTopic(topic)) return { ok: false, error: "Please choose a valid topic." };
+  if (!(await isValidCourse(topic))) return { ok: false, error: "Please choose a valid course." };
   if (staff.role === "admin" && staff.topic && topic !== staff.topic) {
-    return { ok: false, error: `You can only create exams for your topic (${staff.topic}).` };
+    return { ok: false, error: `You can only create exams for your course (${staff.topic}).` };
   }
   const durationMinutes = Number(durationRaw);
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 240) {
@@ -179,6 +179,76 @@ export async function importQuestions(
 
   revalidatePath("/assessments");
   return { ok: true, message: `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}.` };
+}
+
+export type QuestionInput = {
+  type: "objective" | "written";
+  prompt: string;
+  options: string[] | null;
+  correctOption: number | null;
+  points: number;
+};
+
+/** Adds one question to a draft exam (form-based question builder). */
+export async function addExamQuestion(
+  examId: string,
+  formData: FormData
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  const { exam, error } = await canManageExam(examId, staff, true);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+
+  const type = value(formData, "type") as "objective" | "written";
+  const prompt = value(formData, "prompt");
+  const pointsRaw = value(formData, "points");
+
+  if (type !== "objective" && type !== "written") {
+    return { ok: false, error: "Please choose a question type." };
+  }
+  if (prompt.length < 3) return { ok: false, error: "Question text is required (at least 3 characters)." };
+
+  const points = Number(pointsRaw);
+  if (!Number.isInteger(points) || points < 1 || points > 100) {
+    return { ok: false, error: "Points must be a whole number between 1 and 100." };
+  }
+
+  let options: string[] | null = null;
+  let correctOption: number | null = null;
+  if (type === "objective") {
+    const rawOptions = [0, 1, 2, 3].map((index) => value(formData, `option${index}`));
+    if (rawOptions.some((option) => !option)) {
+      return { ok: false, error: "Every option (A–D) is required for objective questions." };
+    }
+    options = rawOptions;
+    correctOption = Number(value(formData, "correctOption"));
+    if (!Number.isInteger(correctOption) || correctOption < 0 || correctOption > 3) {
+      return { ok: false, error: "Please choose the correct option." };
+    }
+  }
+
+  const [maxRow] = await db()
+    .select({ value: max(examQuestions.order) })
+    .from(examQuestions)
+    .where(eq(examQuestions.examId, examId));
+  const order = (maxRow?.value ?? -1) + 1;
+
+  try {
+    await db().insert(examQuestions).values({
+      examId,
+      type,
+      prompt,
+      options: options ? JSON.stringify(options) : null,
+      correctOption,
+      points,
+      order,
+    });
+  } catch {
+    return { ok: false, error: "Could not save the question. Try again." };
+  }
+
+  revalidatePath("/assessments");
+  return { ok: true, message: "Question added." };
 }
 
 export async function updateExamDetails(examId: string, formData: FormData): Promise<ActionResult> {
@@ -317,7 +387,47 @@ export async function closeExam(examId: string): Promise<ActionResult> {
   });
 
   revalidatePath("/assessments");
-  return { ok: true };
+  return { ok: true, message: "Exam closed." };
+}
+
+/**
+ * Reopens a closed exam so trainees can continue or retake it. The window is
+ * restarted from now (24h if the original close time already passed).
+ */
+export async function reopenExam(examId: string): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  const { exam, error } = await canManageExam(examId, staff);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+  if (exam.status !== "closed") {
+    return { ok: false, error: "Only closed exams can be reopened." };
+  }
+
+  const now = new Date();
+  const originalClose = exam.closesAt?.getTime() ?? 0;
+  const closesAt = originalClose > now.getTime() ? exam.closesAt : new Date(now.getTime() + 24 * 3600_000);
+
+  try {
+    await db()
+      .update(exams)
+      .set({ status: "open", opensAt: now, closesAt, updatedAt: now })
+      .where(eq(exams.id, examId));
+  } catch {
+    return { ok: false, error: "Could not reopen the exam. Try again." };
+  }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_reopened",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Reopened exam “${exam.title}”`,
+  });
+
+  revalidatePath("/assessments");
+  return { ok: true, message: "Exam reopened. Trainees can continue or retake it." };
 }
 
 async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string) {

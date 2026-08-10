@@ -10,7 +10,12 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/lib/audit";
 import { validatePassword, validateSignup } from "@/lib/validation";
 
-export type ActionResult = { ok: boolean; error?: string };
+export type ActionResult = {
+  ok: boolean;
+  error?: string;
+  /** True when the registration code belongs to a deleted record — show the Contact-Admin prompt. */
+  blocked?: boolean;
+};
 
 function value(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -32,6 +37,8 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
     registrationNumber: value(formData, "registrationNumber"),
     fullName: value(formData, "fullName"),
     gender: value(formData, "gender"),
+    email: value(formData, "email").toLowerCase(),
+    phone: value(formData, "phone"),
     password: String(formData.get("password") ?? ""),
   };
   const confirm = String(formData.get("confirmPassword") ?? "");
@@ -56,12 +63,32 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
   if (input.password !== confirm) return { ok: false, error: "Passwords do not match." };
 
   const [existingRegistration] = await db()
-    .select({ id: trainees.id })
+    .select({ id: trainees.id, status: trainees.status })
     .from(trainees)
     .where(eq(trainees.registrationNumber, registrationCode))
     .limit(1);
   if (existingRegistration) {
+    // A record marked for deletion keeps its identifying details so we can
+    // block re-registration and route the person to the support desk.
+    if (existingRegistration.status === "deleted") {
+      return {
+        ok: false,
+        blocked: true,
+        error:
+          "This registration code belongs to a deleted record. Contact admin for help re-registering.",
+      };
+    }
     return { ok: false, error: "This registration code is already in use." };
+  }
+
+  // The email must be unique across users (staff and students).
+  const [emailCollision] = await db()
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
+  if (emailCollision) {
+    return { ok: false, error: "This email is already in use by another account." };
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10);
@@ -71,6 +98,7 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
       .insert(users)
       .values({
         name: input.fullName,
+        email: input.email,
         passwordHash,
         role: "student",
       })
@@ -82,7 +110,8 @@ export async function registerTrainee(formData: FormData): Promise<ActionResult>
       registrationNumber: registrationCode,
       fullName: input.fullName,
       gender: input.gender,
-      phone: "",
+      phone: input.phone,
+      email: input.email,
       status: "pending",
     });
 

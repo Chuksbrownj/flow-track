@@ -2,6 +2,7 @@ import { and, count, eq, gte } from "drizzle-orm";
 import { requireStaff } from "@/lib/auth-guard";
 import { ClipboardList, UserCheck, UserX, Users } from "lucide-react";
 import { AttendanceChart } from "@/components/dashboard/attendance-chart";
+import { CourseSelectBanner } from "@/components/dashboard/course-select";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,9 +13,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { db } from "@/db/client";
-import { assessments, attendance, trainees, trainingSchedule } from "@/db/schema";
+import { assessmentScores, attendance, trainees, trainingSchedule } from "@/db/schema";
 import { daysAgoStr, formatMonth, formatDay, formatTime, formatLongDate, todayStr } from "@/lib/date";
 import { settleAttendance } from "@/lib/attendance-settle";
+import { listCourseNames } from "@/lib/courses";
 
 export const metadata = { title: "Dashboard" };
 
@@ -33,6 +35,11 @@ export default async function DashboardPage() {
   const database = db();
   const today = todayStr();
   const isAdmin = user.role === "admin";
+  const isStaff = user.role === "admin" || user.role === "master_admin";
+
+  const courseNames = await listCourseNames();
+  // Update 16: admins (and master admins acting as trainers) pick their own course.
+  const needsCourse = isStaff && !user.topic;
 
   const [totalTrainees, presentToday, absentToday, assessmentCount, weekRows, upcoming] =
     await Promise.all([
@@ -45,7 +52,7 @@ export default async function DashboardPage() {
         .select({ value: count() })
         .from(attendance)
         .where(and(eq(attendance.date, today), eq(attendance.status, "absent"))),
-      database.select({ value: count() }).from(assessments),
+      database.select({ value: count() }).from(assessmentScores),
       database
         .select({ date: attendance.date, status: attendance.status })
         .from(attendance)
@@ -77,11 +84,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {needsCourse ? <CourseSelectBanner courses={courseNames} /> : null}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         {isAdmin ? (
-          <Badge variant="secondary">Admin · {user.topic ?? "Topic not set"}</Badge>
-        ) : null}
+          <Badge variant="secondary">Admin · {user.topic ?? "Course not selected"}</Badge>
+        ) : (
+          <Badge variant="secondary">Master admin{user.topic ? ` · Trainer: ${user.topic}` : ""}</Badge>
+        )}
         <p className="text-sm text-muted-foreground">{formatLongDate()}</p>
       </div>
 

@@ -3,17 +3,21 @@ import { requireMasterAdmin } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { StaffClient } from "@/components/staff/staff-client";
+import { listCourses } from "@/lib/courses";
 
 export const metadata = { title: "Staff" };
 
 export default async function StaffPage() {
   const admin = await requireMasterAdmin();
 
-  const rows = await db()
-    .select()
-    .from(users)
-    .where(or(eq(users.role, "admin"), eq(users.role, "master_admin")))
-    .orderBy(asc(users.role), asc(users.name));
+  const [rows, courseRows] = await Promise.all([
+    db()
+      .select()
+      .from(users)
+      .where(or(eq(users.role, "admin"), eq(users.role, "master_admin")))
+      .orderBy(asc(users.role), asc(users.name)),
+    listCourses(),
+  ]);
 
   return (
     <StaffClient
@@ -26,6 +30,7 @@ export default async function StaffPage() {
         topic: row.topic,
         createdAt: row.createdAt.toISOString(),
       }))}
+      courses={courseRows.map((course) => course.name)}
     />
   );
 }

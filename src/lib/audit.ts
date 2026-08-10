@@ -18,10 +18,17 @@ export type AuditAction =
   | "exam_deleted"
   | "exam_opened"
   | "exam_closed"
+  | "exam_reopened"
   | "exam_graded"
   | "exam_override"
   | "password_reset"
-  | "role_promoted";
+  | "role_promoted"
+  | "suspended"
+  | "restored"
+  | "suspend_requested"
+  | "suspend_confirmed"
+  | "suspend_rejected"
+  | "course_added";
 
 export type AuditEntityType =
   | "trainee"
@@ -31,7 +38,8 @@ export type AuditEntityType =
   | "staff"
   | "exam"
   | "profile"
-  | "auth";
+  | "auth"
+  | "course";
 
 export type AuditLogRow = {
   id: string;
@@ -130,7 +138,9 @@ export function describeAudit(row: AuditLogRow): string {
                 ? "Exam"
                 : row.entityType === "profile"
                   ? "Profile"
-                  : "Account";
+                  : row.entityType === "course"
+                    ? "Course"
+                    : "Account";
   const action =
     row.action === "created"
       ? "created"
@@ -157,20 +167,33 @@ export function describeAudit(row: AuditLogRow): string {
                           : row.action === "exam_updated"
                             ? "updated exam"
                             : row.action === "exam_deleted"
-                              ? "deleted exam"
-                              : row.action === "exam_opened"
-                                ? "opened exam"
-                                : row.action === "exam_closed"
-                                  ? "closed exam"
-                                  : row.action === "exam_graded"
-                                    ? "graded exam"
-                                    : row.action === "exam_override"
-                                      ? "granted exam override"
-                                      : row.action === "password_reset"
-                                        ? "reset password"
-                                        : row.action === "role_promoted"
-                                          ? "promoted"
-                                          : row.action;
+                              ? "deleted exam"                                  : row.action === "exam_opened"
+                                    ? "opened exam"
+                                    : row.action === "exam_closed"
+                                      ? "closed exam"
+                                      : row.action === "exam_reopened"
+                                        ? "reopened exam"
+                                      : row.action === "exam_graded"
+                                        ? "graded exam"
+                                        : row.action === "exam_override"
+                                          ? "granted exam override"
+                                          : row.action === "password_reset"
+                                            ? "reset password"
+                                            : row.action === "role_promoted"
+                                              ? "promoted"
+                                              : row.action === "suspended"
+                                                ? "suspended"
+                                              : row.action === "restored"
+                                                ? "restored"
+                                              : row.action === "suspend_requested"
+                                                ? "requested suspension"
+                                              : row.action === "suspend_confirmed"
+                                                ? "confirmed suspension"
+                                              : row.action === "suspend_rejected"
+                                                ? "rejected suspension request"
+                                              : row.action === "course_added"
+                                                ? "added course"
+                                              : row.action;
   return `${entity} ${action}`;
 }
 

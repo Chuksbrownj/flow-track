@@ -1,12 +1,20 @@
 import { asc, count, desc, eq, ne } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { assessments, examQuestions, exams, examSubmissions, trainees, users } from "@/db/schema";
+import {
+  assessmentScores,
+  examQuestions,
+  exams,
+  examSubmissions,
+  trainees,
+  users,
+} from "@/db/schema";
 import { AssessmentsClient, type ScoreRow } from "@/components/assessments/assessments-client";
 import { ExamsClient, type ExamListItem, type SubmissionRow } from "@/components/assessments/exams-client";
 import { TraineeExams, type TraineeExamRow } from "@/components/assessments/trainee-exams";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatWeek, weekKey } from "@/lib/date";
+import { listCourses } from "@/lib/courses";
 
 export const metadata = { title: "Assessments" };
 
@@ -97,7 +105,7 @@ export default async function AssessmentsPage({
   const isAdmin = user.role === "master_admin";
   const examWhere = isAdmin ? undefined : eq(exams.createdById, staffId);
 
-  const [examRows, questionCountRows, submissionRows, traineeRows, staffRows, writtenRows] =
+  const [examRows, questionCountRows, submissionRows, traineeRows, staffRows, writtenRows, courseList] =
     await Promise.all([
       examWhere
         ? database.select().from(exams).where(examWhere).orderBy(desc(exams.createdAt))
@@ -113,6 +121,7 @@ export default async function AssessmentsPage({
         .select()
         .from(examQuestions)
         .where(eq(examQuestions.type, "written")),
+      listCourses(),
     ]);
 
   const questionCountByExam = new Map(questionCountRows.map((row) => [row.examId, row.value]));
@@ -174,9 +183,9 @@ export default async function AssessmentsPage({
 
   const [weekRows, scoreTrainees, scoreRows] = await Promise.all([
     database
-      .select({ week: assessments.week })
-      .from(assessments)
-      .groupBy(assessments.week),
+      .select({ week: assessmentScores.week })
+      .from(assessmentScores)
+      .groupBy(assessmentScores.week),
     database
       .select({
         id: trainees.id,
@@ -187,7 +196,10 @@ export default async function AssessmentsPage({
       .from(trainees)
       .where(ne(trainees.status, "pending"))
       .orderBy(asc(trainees.fullName)),
-    database.select().from(assessments).where(eq(assessments.week, selectedWeek)),
+    database
+      .select()
+      .from(assessmentScores)
+      .where(eq(assessmentScores.week, selectedWeek)),
   ]);
 
   const weekSet = new Set<string>([currentWeek, ...weekRows.map((row) => row.week)]);
@@ -196,10 +208,8 @@ export default async function AssessmentsPage({
   const initialAssessments: Record<string, ScoreRow> = {};
   for (const row of scoreRows) {
     initialAssessments[row.traineeId] = {
-      graphicDesign: row.graphicDesign,
-      animation: row.animation,
-      dataAnalysis: row.dataAnalysis,
-      hpLife: row.hpLife,
+      ...(initialAssessments[row.traineeId] ?? {}),
+      [row.courseId]: row.score,
     };
   }
 
@@ -210,7 +220,7 @@ export default async function AssessmentsPage({
         <p className="text-sm text-muted-foreground">
           {isAdmin
             ? "Create and manage exams, grade written answers, and record weekly scores."
-            : `Manage exams for your topic${user.topic ? ` (${user.topic})` : ""} and record weekly scores.`}
+            : `Manage exams for your course${user.topic ? ` (${user.topic})` : ""} and record weekly scores.`}
         </p>
       </div>
 
@@ -224,6 +234,7 @@ export default async function AssessmentsPage({
             exams={examList}
             canCreateAnyTopic={isAdmin}
             trainerTopic={user.topic ?? null}
+            courses={courseList.map((course) => course.name)}
           />
         </TabsContent>
         <TabsContent value="scores" className="pt-4">
@@ -233,6 +244,7 @@ export default async function AssessmentsPage({
             initialAssessments={initialAssessments}
             week={selectedWeek}
             weeks={weeks}
+            courses={courseList}
           />
         </TabsContent>
       </Tabs>

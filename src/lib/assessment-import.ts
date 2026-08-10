@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import mammoth from "mammoth";
 
 export type ImportedQuestion = {
   type: "objective" | "written";
@@ -35,11 +36,16 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
   const name = file.name.toLowerCase();
   const isCsv = name.endsWith(".csv");
   const isExcel = name.endsWith(".xlsx") || name.endsWith(".xls");
-  if (!isCsv && !isExcel) {
-    return { ok: false, errors: ["Please upload a .csv, .xlsx or .xls file."] };
+  const isDocx = name.endsWith(".docx");
+  if (!isCsv && !isExcel && !isDocx) {
+    return { ok: false, errors: ["Please upload a .csv, .xlsx, .xls or .docx file."] };
   }
   if (file.size > 5 * 1024 * 1024) {
     return { ok: false, errors: ["The file is too large (maximum 5 MB)."] };
+  }
+
+  if (isDocx) {
+    return parseDocxQuestions(file);
   }
 
   let workbook: XLSX.WorkBook;
@@ -133,6 +139,120 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
   if (errors.length > 0) return { ok: false, errors };
   if (questions.length === 0) return { ok: false, errors: ["No valid questions found in the file."] };
 
+  return { ok: true, questions, imported: questions.length };
+}
+
+/**
+ * Parses a Microsoft Word (.docx) question paper into validated questions.
+ *
+ * The document is read as plain text; each question is separated from the
+ * next by a blank line and laid out as:
+ *
+ *   What colour model is used for print?
+ *   A) RGB
+ *   B) CMYK
+ *   C) HSV
+ *   D) HSL
+ *   Answer: B
+ *   Points: 2
+ *
+ * A block with no option lines is treated as a written question. The correct
+ * answer and points lines are optional (defaults: first option / 1 point).
+ */
+async function parseDocxQuestions(file: File): Promise<ImportResult> {
+  let text: string;
+  try {
+    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+    text = result.value;
+  } catch {
+    return { ok: false, errors: ["Could not read the Word document. Make sure it is a valid .docx file."] };
+  }
+
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim());
+
+  const blocks: string[][] = [];
+  let current: string[] = [];
+  for (const line of lines) {
+    if (line === "") {
+      if (current.length > 0) {
+        blocks.push(current);
+        current = [];
+      }
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length > 0) blocks.push(current);
+
+  if (blocks.length === 0) return { ok: false, errors: ["The document does not contain any questions."] };
+  if (blocks.length > MAX_QUESTIONS) {
+    return { ok: false, errors: [`A maximum of ${MAX_QUESTIONS} questions per file is allowed.`] };
+  }
+
+  const questions: ImportedQuestion[] = [];
+  const errors: string[] = [];
+
+  blocks.forEach((block, index) => {
+    const label = `Question ${index + 1}`;
+    const optionLines: { letter: string; text: string }[] = [];
+    let prompt: string | null = null;
+    let correct: string | null = null;
+    let points = 1;
+
+    for (const line of block) {
+      const optionMatch = /^([A-Fa-f])[).]\s*(.+)$/.exec(line);
+      if (optionMatch) {
+        optionLines.push({ letter: optionMatch[1].toUpperCase(), text: optionMatch[2].trim() });
+        continue;
+      }
+      const answerMatch = /^answer\s*[::]?\s*([A-Fa-f])$/i.exec(line);
+      if (answerMatch) {
+        correct = answerMatch[1].toUpperCase();
+        continue;
+      }
+      const pointsMatch = /^points\s*[::]?\s*(\d+)$/i.exec(line);
+      if (pointsMatch) {
+        points = Number(pointsMatch[1]);
+        continue;
+      }
+      if (!prompt) prompt = line;
+    }
+
+    if (!Number.isInteger(points) || points < 1 || points > 100) {
+      errors.push(`${label}: points must be a whole number between 1 and 100.`);
+      return;
+    }
+    if (!prompt) {
+      errors.push(`${label}: missing the question text.`);
+      return;
+    }
+
+    if (optionLines.length >= 2) {
+      let correctOption: number | null = null;
+      if (correct) {
+        const idx = optionLines.findIndex((option) => option.letter === correct);
+        if (idx >= 0) correctOption = idx;
+      }
+      if (correctOption === null) {
+        errors.push(`${label}: the "Answer:" line must match one of the listed options (A–F).`);
+        return;
+      }
+      questions.push({
+        type: "objective",
+        prompt,
+        options: optionLines.map((option) => option.text),
+        correctOption,
+        points,
+      });
+    } else {
+      questions.push({ type: "written", prompt, options: null, correctOption: null, points });
+    }
+  });
+
+  if (errors.length > 0) return { ok: false, errors };
   return { ok: true, questions, imported: questions.length };
 }
 

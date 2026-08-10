@@ -7,7 +7,7 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { requireMasterAdmin } from "@/lib/auth-guard";
 import { isValidEmail, validatePassword } from "@/lib/validation";
-import { isValidTopic } from "@/lib/topics";
+import { isValidCourse } from "@/lib/courses";
 import { isUuid } from "@/lib/validation";
 import { sendAccountCredentialsEmail } from "@/lib/email";
 import { recordAudit } from "@/lib/audit";
@@ -35,8 +35,10 @@ export async function createStaff(formData: FormData): Promise<ActionResult> {
   if (input.name.length < 3) return { ok: false, error: "Name is required (at least 3 characters)." };
   if (!isValidEmail(input.email)) return { ok: false, error: "Please enter a valid email address." };
   if (!STAFF_ROLES.includes(input.role)) return { ok: false, error: "Please choose a valid role." };
-  if (input.role === "admin" && !isValidTopic(input.topic)) {
-    return { ok: false, error: "Please choose a valid topic for this admin." };
+  // Admins (and master admins acting as trainers) pick their own course on
+  // first login, so the topic is optional here.
+  if (input.topic && !(await isValidCourse(input.topic))) {
+    return { ok: false, error: "Please choose a valid course." };
   }
   const passwordError = validatePassword(input.password);
   if (passwordError) return { ok: false, error: passwordError };
@@ -54,7 +56,7 @@ export async function createStaff(formData: FormData): Promise<ActionResult> {
       email: input.email,
       passwordHash: await bcrypt.hash(input.password, 10),
       role: input.role,
-      topic: input.role === "admin" ? input.topic : null,
+      topic: input.topic || null,
     });
   } catch {
     return { ok: false, error: "Could not create the staff account. Try again." };
@@ -97,8 +99,8 @@ export async function updateStaff(userId: string, formData: FormData): Promise<A
 
   if (name.length < 3) return { ok: false, error: "Name is required (at least 3 characters)." };
   if (!STAFF_ROLES.includes(role)) return { ok: false, error: "Please choose a valid role." };
-  if (role === "admin" && !isValidTopic(topic)) {
-    return { ok: false, error: "Please choose a valid topic for this admin." };
+  if (topic && !(await isValidCourse(topic))) {
+    return { ok: false, error: "Please choose a valid course." };
   }
 
   const [target] = await db().select().from(users).where(eq(users.id, userId)).limit(1);
@@ -124,7 +126,7 @@ export async function updateStaff(userId: string, formData: FormData): Promise<A
       .set({
         name,
         role,
-        topic: role === "admin" ? topic : null,
+        topic: topic || null,
       })
       .where(eq(users.id, userId));
   } catch {
@@ -158,10 +160,9 @@ export async function promoteToMasterAdmin(userId: string): Promise<ActionResult
   }
 
   try {
-    await db()
-      .update(users)
-      .set({ role: "master_admin", topic: null })
-      .where(eq(users.id, userId));
+    // A master admin can keep their trainer course (Update 15) — the topic is
+    // not cleared on promotion.
+    await db().update(users).set({ role: "master_admin" }).where(eq(users.id, userId));
   } catch {
     return { ok: false, error: "Could not promote this admin. Try again." };
   }

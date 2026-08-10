@@ -58,7 +58,6 @@ import {
   resetStaffPassword,
   updateStaff,
 } from "@/lib/actions/staff";
-import { TOPIC_LABELS } from "@/lib/topics";
 
 export type StaffRow = {
   id: string;
@@ -77,9 +76,12 @@ function useBusy() {
 export function StaffClient({
   currentUserId,
   staff,
+  courses,
 }: {
   currentUserId: string;
   staff: StaffRow[];
+  /** Active course names (dynamic — admins pick their own course on first login). */
+  courses: string[];
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -119,6 +121,7 @@ export function StaffClient({
           <DialogContent className="sm:max-w-md">
             <CreateStaffForm
               pending={pending}
+              courses={courses}
               onSubmit={(formData) =>
                 run(() => createStaff(formData), () => {
                   setCreateOpen(false);
@@ -159,9 +162,7 @@ export function StaffClient({
                         <Badge variant={isMaster ? "default" : "secondary"}>
                           {isMaster ? "Master admin" : "Admin"}
                         </Badge>
-                        {!isMaster && row.topic ? (
-                          <Badge variant="outline">{row.topic}</Badge>
-                        ) : null}
+                        {row.topic ? <Badge variant="outline">{row.topic}</Badge> : null}
                       </div>
                       <p className="text-xs text-muted-foreground">{row.email ?? "—"}</p>
                     </div>
@@ -265,6 +266,7 @@ export function StaffClient({
               key={editTarget.id}
               target={editTarget}
               pending={pending}
+              courses={courses}
               onSubmit={(formData) =>
                 run(() => updateStaff(editTarget.id, formData), () => {
                   setEditTarget(null);
@@ -298,13 +300,15 @@ export function StaffClient({
 
 function CreateStaffForm({
   pending,
+  courses,
   onSubmit,
 }: {
   pending: boolean;
+  courses: string[];
   onSubmit: (formData: FormData) => void;
 }) {
   const [role, setRole] = useState("admin");
-  const [topic, setTopic] = useState<string>(TOPIC_LABELS[0]);
+  const [topic, setTopic] = useState<string>("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -346,24 +350,26 @@ function CreateStaffForm({
           Admins manage training (attendance, scores, schedule). Master admins also manage staff.
         </p>
       </div>
-      {role === "admin" ? (
-        <div className="space-y-2">
-          <Label>Topic</Label>
-          <Select value={topic} onValueChange={setTopic}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TOPIC_LABELS.map((label) => (
-                <SelectItem key={label} value={label}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <input type="hidden" name="topic" value={topic} />
-        </div>
-      ) : null}
+      <div className="space-y-2">
+        <Label>Course (optional)</Label>
+        <Select value={topic} onValueChange={setTopic}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select on first login instead" />
+          </SelectTrigger>
+          <SelectContent>
+            {courses.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <input type="hidden" name="topic" value={topic} />
+        <p className="text-xs text-muted-foreground">
+          Admins normally choose their own course on first login (locked after that). You can assign
+          one here or change it later.
+        </p>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="staff-password">Initial password</Label>
         <Input
@@ -388,14 +394,16 @@ function CreateStaffForm({
 function EditStaffForm({
   target,
   pending,
+  courses,
   onSubmit,
 }: {
   target: StaffRow;
   pending: boolean;
+  courses: string[];
   onSubmit: (formData: FormData) => void;
 }) {
   const [role, setRole] = useState(target.role);
-  const [topic, setTopic] = useState<string>(target.topic ?? TOPIC_LABELS[0]);
+  const [topic, setTopic] = useState<string>(target.topic ?? "");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -425,24 +433,33 @@ function EditStaffForm({
         </Select>
         <input type="hidden" name="role" value={role} />
       </div>
-      {role === "admin" ? (
-        <div className="space-y-2">
-          <Label>Topic</Label>
-          <Select value={topic} onValueChange={setTopic}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TOPIC_LABELS.map((label) => (
-                <SelectItem key={label} value={label}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <input type="hidden" name="topic" value={topic} />
-        </div>
-      ) : null}
+      <div className="space-y-2">
+        <Label>Course</Label>
+        <Select value={topic} onValueChange={setTopic}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="None" />
+          </SelectTrigger>
+          <SelectContent>
+            {courses.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <input type="hidden" name="topic" value={topic} />
+        {role === "admin" && target.topic ? (
+          <p className="text-xs text-muted-foreground">
+            The admin chose this course themselves — changing it here overrides their selection.
+          </p>
+        ) : null}
+        {role === "master_admin" ? (
+          <p className="text-xs text-muted-foreground">
+            Master admins keep full access; a course assignment is optional and only affects the
+            trainer views.
+          </p>
+        ) : null}
+      </div>
       <DialogFooter showCloseButton={false}>
         <Button type="submit" disabled={pending}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}

@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:px-6">
             <MobileNav role={role} />
-            <SidebarToggle />
+            <SidebarToggle role={role} />
             <div className="ml-auto flex items-center gap-2 md:gap-3">
               <ThemeToggle />
               <UserMenu name={displayName} email={session.user.email ?? ""} />

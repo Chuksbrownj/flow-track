@@ -1,17 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db/client";
-import { trainees, users } from "@/db/schema";
+import { suspendRequests, trainees, users } from "@/db/schema";
 import { requireMasterAdmin, requireStaff } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { recordTraineeChange } from "@/lib/trainee-logs";
 import { recordAudit } from "@/lib/audit";
 import { isUuid, validatePassword, validateTrainee } from "@/lib/validation";
+import { sendSuspendRequestNotice } from "@/lib/email";
 
-export type ActionResult = { ok: boolean; error?: string };
+export type ActionResult = { ok: boolean; error?: string; message?: string };
 
 function value(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -318,6 +319,319 @@ export async function resetStudentPassword(
 
   revalidatePath("/trainees");
   return { ok: true };
+}
+
+/**
+ * Master admin: suspend a trainee's account immediately (status → dormant).
+ */
+export async function suspendTrainee(id: string): Promise<ActionResult> {
+  const admin = await requireMasterAdmin();
+  if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, fullName: trainees.fullName, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, id))
+    .limit(1);
+  if (!trainee) return { ok: false, error: "Trainee not found." };
+  if (trainee.status === "dormant") return { ok: false, error: "This account is already dormant." };
+
+  try {
+    await db().update(trainees).set({ status: "dormant", updatedAt: new Date() }).where(eq(trainees.id, id));
+  } catch {
+    return { ok: false, error: "Could not suspend the account. Try again." };
+  }
+
+  await recordTraineeChange({
+    traineeId: id,
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    action: "status",
+    field: "status",
+    before: trainee.status,
+    after: "dormant",
+  });
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "suspended",
+    entityType: "trainee",
+    entityId: id,
+    summary: `Suspended ${trainee.fullName}'s account (dormant)`,
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true, message: `${trainee.fullName}'s account is now dormant.` };
+}
+
+/**
+ * Master admin: restore a dormant account back to active.
+ */
+export async function restoreTrainee(id: string): Promise<ActionResult> {
+  const admin = await requireMasterAdmin();
+  if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, fullName: trainees.fullName, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, id))
+    .limit(1);
+  if (!trainee) return { ok: false, error: "Trainee not found." };
+  if (trainee.status !== "dormant") return { ok: false, error: "Only dormant accounts can be restored." };
+
+  try {
+    await db().update(trainees).set({ status: "active", updatedAt: new Date() }).where(eq(trainees.id, id));
+  } catch {
+    return { ok: false, error: "Could not restore the account. Try again." };
+  }
+
+  await recordTraineeChange({
+    traineeId: id,
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    action: "status",
+    field: "status",
+    before: "dormant",
+    after: "active",
+  });
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "restored",
+    entityType: "trainee",
+    entityId: id,
+    summary: `Restored ${trainee.fullName}'s account (active)`,
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true, message: `${trainee.fullName}'s account is active again.` };
+}
+
+/**
+ * Admin (trainer): request suspension of a trainee. Goes into a Pending state
+ * and notifies all master admins. Only takes effect once a master confirms.
+ */
+export async function requestSuspendTrainee(id: string, reason: string): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
+  const trimmedReason = reason.trim();
+  if (trimmedReason.length < 5) return { ok: false, error: "Please give a reason (at least 5 characters)." };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, fullName: trainees.fullName, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, id))
+    .limit(1);
+  if (!trainee) return { ok: false, error: "Trainee not found." };
+  if (trainee.status === "dormant") return { ok: false, error: "This account is already dormant." };
+
+  const [pending] = await db()
+    .select({ id: suspendRequests.id })
+    .from(suspendRequests)
+    .where(and(eq(suspendRequests.traineeId, id), eq(suspendRequests.status, "pending")))
+    .limit(1);
+  if (pending) return { ok: false, error: "A suspension request for this trainee is already pending." };
+
+  try {
+    await db().insert(suspendRequests).values({
+      traineeId: id,
+      requestedById: staff.id,
+      reason: trimmedReason,
+      status: "pending",
+    });
+  } catch {
+    return { ok: false, error: "Could not submit the request. Try again." };
+  }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "suspend_requested",
+    entityType: "trainee",
+    entityId: id,
+    summary: `${staff.name ?? "A trainer"} requested suspension of ${trainee.fullName} (${trimmedReason})`,
+  });
+
+  // Notify all master admins by email.
+  const masterEmails = await db()
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.role, "master_admin"));
+  const recipients = masterEmails
+    .map((row) => row.email)
+    .filter((email): email is string => !!email);
+  if (recipients.length > 0) {
+    await sendSuspendRequestNotice(recipients, {
+      traineeName: trainee.fullName,
+      reason: trimmedReason,
+      requestedBy: staff.name ?? "A trainer",
+    });
+  }
+
+  revalidatePath("/trainees");
+  return { ok: true, message: "Suspension request submitted for master admin approval." };
+}
+
+/** Master admin: confirm a pending suspension request (account becomes dormant). */
+export async function confirmSuspendRequest(requestId: string): Promise<ActionResult> {
+  const admin = await requireMasterAdmin();
+  if (!isUuid(requestId)) return { ok: false, error: "Request not found." };
+
+  const [request] = await db()
+    .select()
+    .from(suspendRequests)
+    .where(eq(suspendRequests.id, requestId))
+    .limit(1);
+  if (!request) return { ok: false, error: "Request not found." };
+  if (request.status !== "pending") return { ok: false, error: "This request was already decided." };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, fullName: trainees.fullName, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, request.traineeId))
+    .limit(1);
+  if (!trainee) return { ok: false, error: "Trainee not found." };
+
+  try {
+    await db()
+      .update(trainees)
+      .set({ status: "dormant", updatedAt: new Date() })
+      .where(eq(trainees.id, trainee.id));
+    await db()
+      .update(suspendRequests)
+      .set({ status: "confirmed", decidedById: admin.id, decidedAt: new Date() })
+      .where(eq(suspendRequests.id, requestId));
+  } catch {
+    return { ok: false, error: "Could not confirm the request. Try again." };
+  }
+
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "suspend_confirmed",
+    entityType: "trainee",
+    entityId: trainee.id,
+    summary: `Confirmed suspension of ${trainee.fullName} (dormant)`,
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true, message: `${trainee.fullName}'s account is now dormant.` };
+}
+
+/** Master admin: reject a pending suspension request. */
+export async function rejectSuspendRequest(requestId: string): Promise<ActionResult> {
+  const admin = await requireMasterAdmin();
+  if (!isUuid(requestId)) return { ok: false, error: "Request not found." };
+
+  const [request] = await db()
+    .select()
+    .from(suspendRequests)
+    .where(eq(suspendRequests.id, requestId))
+    .limit(1);
+  if (!request) return { ok: false, error: "Request not found." };
+  if (request.status !== "pending") return { ok: false, error: "This request was already decided." };
+
+  try {
+    await db()
+      .update(suspendRequests)
+      .set({ status: "rejected", decidedById: admin.id, decidedAt: new Date() })
+      .where(eq(suspendRequests.id, requestId));
+  } catch {
+    return { ok: false, error: "Could not reject the request. Try again." };
+  }
+
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "suspend_rejected",
+    entityType: "trainee",
+    entityId: request.traineeId,
+    summary: "Rejected a suspension request",
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true, message: "Request rejected. The trainee's account stays active." };
+}
+
+/**
+ * Master admin: mark a trainee's account for permanent deletion. Identifying
+ * details stay, but the record is flagged "deleted" and the underlying data is
+ * purged after the 1-week grace period (see purgeDeletedTrainees).
+ */
+export async function markTraineeDeleted(id: string): Promise<ActionResult> {
+  const admin = await requireMasterAdmin();
+  if (!isUuid(id)) return { ok: false, error: "Trainee not found." };
+
+  const [trainee] = await db()
+    .select({ id: trainees.id, fullName: trainees.fullName, status: trainees.status })
+    .from(trainees)
+    .where(eq(trainees.id, id))
+    .limit(1);
+  if (!trainee) return { ok: false, error: "Trainee not found." };
+  if (trainee.status === "deleted") return { ok: false, error: "This account is already marked for deletion." };
+
+  try {
+    await db()
+      .update(trainees)
+      .set({ status: "deleted", deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(trainees.id, id));
+  } catch {
+    return { ok: false, error: "Could not delete the account. Try again." };
+  }
+
+  // Logged now — the record's data will no longer exist after the grace period.
+  await recordAudit({
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    actorRole: "master_admin",
+    action: "deleted",
+    entityType: "trainee",
+    entityId: id,
+    summary: `Marked ${trainee.fullName}'s account for permanent deletion (purged after 1 week)`,
+  });
+  await recordTraineeChange({
+    traineeId: id,
+    actorId: admin.id,
+    actorName: admin.name ?? null,
+    action: "status",
+    field: "status",
+    before: trainee.status,
+    after: "deleted",
+  });
+
+  revalidatePath("/trainees");
+  return { ok: true, message: `${trainee.fullName} marked for deletion. Data is purged after 1 week.` };
+}
+
+/**
+ * Lazily purges trainee records (and their login accounts) that were marked
+ * for deletion more than 1 week ago. Called from staff pages before reading
+ * trainee data so the purge needs no cron service.
+ */
+export async function purgeDeletedTrainees() {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const doomed = await db()
+    .select({ id: trainees.id, userId: trainees.userId })
+    .from(trainees)
+    .where(and(eq(trainees.status, "deleted"), lt(trainees.deletedAt, cutoff)));
+  if (doomed.length === 0) return;
+
+  const ids = doomed.map((row) => row.id);
+  const userIds = doomed.map((row) => row.userId).filter((value): value is string => !!value);
+  try {
+    // Attendance, scores and submissions cascade on trainee delete.
+    await db().delete(trainees).where(inArray(trainees.id, ids));
+    if (userIds.length > 0) {
+      await db().delete(users).where(inArray(users.id, userIds)).catch(() => {});
+    }
+  } catch (error) {
+    console.error("purgeDeletedTrainees: could not purge records", error);
+  }
 }
 
 export async function approveTrainee(id: string): Promise<ActionResult> {

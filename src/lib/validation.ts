@@ -44,6 +44,8 @@ export function validateSignup(input: {
   registrationNumber: string;
   fullName: string;
   gender: string;
+  email: string;
+  phone: string;
   password: string;
 }) {
   if (!input.registrationNumber) return "Registration code is required.";
@@ -54,6 +56,9 @@ export function validateSignup(input: {
   if (!input.fullName || input.fullName.length < 3)
     return "Full name is required (at least 3 characters).";
   if (!["Male", "Female"].includes(input.gender)) return "Please choose a valid gender.";
+  if (!isValidEmail(input.email)) return "Please enter a valid email address.";
+  if (!input.phone || input.phone.length < 7 || input.phone.length > 20 || !PHONE_PATTERN.test(input.phone))
+    return "Please enter a valid phone number.";
   return validatePassword(input.password);
 }
 

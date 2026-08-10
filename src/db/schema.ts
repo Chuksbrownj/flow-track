@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  boolean,
   date,
   integer,
   pgTable,
@@ -31,7 +32,10 @@ export const trainees = pgTable("trainees", {
   gender: text("gender").notNull(),
   phone: text("phone").notNull(),
   email: text("email"),
+  /** active | pending | inactive | dormant (suspended) | deleted (marked for permanent deletion) */
   status: text("status").notNull().default("active"),
+  /** When the trainee was marked for permanent deletion (purged after 1 week). */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deviceFingerprint: text("device_fingerprint").unique(),
   deviceIp: text("device_ip"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -55,23 +59,37 @@ export const attendance = pgTable(
   (t) => [uniqueIndex("attendance_trainee_date_idx").on(t.traineeId, t.date)]
 );
 
-export const assessments = pgTable(
-  "assessments",
+/**
+ * Active programme courses (dynamic, admin-managed). The score sheet columns
+ * and exam topic options are driven by this table.
+ */
+export const courses = pgTable("courses", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull().unique(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * One score (out of 100) for a trainee, week and course. Grand Total and
+ * Percentage are computed from these rows — never entered manually.
+ */
+export const assessmentScores = pgTable(
+  "assessment_scores",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     traineeId: uuid("trainee_id")
       .notNull()
       .references(() => trainees.id, { onDelete: "cascade" }),
-    /** Monday of the week this score sheet row belongs to. */
+    /** Monday of the week this score belongs to. */
     week: date("week").notNull(),
-    graphicDesign: integer("graphic_design"),
-    animation: integer("animation"),
-    dataAnalysis: integer("data_analysis"),
-    hpLife: integer("hp_life"),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    score: integer("score").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex("assessments_trainee_week_idx").on(t.traineeId, t.week)]
+  (t) => [uniqueIndex("assessment_scores_trainee_week_course_idx").on(t.traineeId, t.week, t.courseId)]
 );
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
@@ -172,6 +190,31 @@ export const trainingSchedule = pgTable("training_schedule", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const suspendRequests = pgTable("suspend_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  traineeId: uuid("trainee_id")
+    .notNull()
+    .references(() => trainees.id, { onDelete: "cascade" }),
+  requestedById: uuid("requested_by_id").references(() => users.id, { onDelete: "set null" }),
+  reason: text("reason"),
+  /** pending | confirmed | rejected */
+  status: text("status").notNull().default("pending"),
+  decidedById: uuid("decided_by_id").references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const supportTickets = pgTable("support_tickets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ticketNumber: text("ticket_number").notNull().unique(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  registrationNumber: text("registration_number"),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: uuid("id").defaultRandom().primaryKey(),
   actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
@@ -186,7 +229,7 @@ export const auditLogs = pgTable("audit_logs", {
 
 export const traineesRelations = relations(trainees, ({ many }) => ({
   attendance: many(attendance),
-  assessments: many(assessments),
+  scores: many(assessmentScores),
 }));
 
 export const attendanceRelations = relations(attendance, ({ one }) => ({
@@ -196,16 +239,21 @@ export const attendanceRelations = relations(attendance, ({ one }) => ({
   }),
 }));
 
-export const assessmentsRelations = relations(assessments, ({ one }) => ({
+export const assessmentScoreRelations = relations(assessmentScores, ({ one }) => ({
   trainee: one(trainees, {
-    fields: [assessments.traineeId],
+    fields: [assessmentScores.traineeId],
     references: [trainees.id],
+  }),
+  course: one(courses, {
+    fields: [assessmentScores.courseId],
+    references: [courses.id],
   }),
 }));
 
 export type User = typeof users.$inferSelect;
 export type Trainee = typeof trainees.$inferSelect;
 export type Attendance = typeof attendance.$inferSelect;
-export type Assessment = typeof assessments.$inferSelect;
+export type AssessmentScore = typeof assessmentScores.$inferSelect;
+export type Course = typeof courses.$inferSelect;
 export type TrainingSession = typeof trainingSchedule.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;

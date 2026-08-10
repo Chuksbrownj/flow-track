@@ -29,10 +29,13 @@ export type AttendanceReportRow = {
 export type AssessmentReportRow = {
   traineeName: string;
   registrationNumber: string | null;
-  graphicDesign: number | null;
-  animation: number | null;
-  dataAnalysis: number | null;
-  hpLife: number | null;
+  scores: { courseId: string; score: number }[];
+};
+
+export type AssessmentAverage = {
+  courseId: string;
+  courseName: string;
+  average: number | null;
 };
 
 type Cell = string | number | null | undefined;
@@ -119,12 +122,7 @@ export function ReportsClient({
     genders: { gender: string; count: number }[];
   };
   attendanceStats: { present: number; absent: number; rate: number | null };
-  assessmentAverages: {
-    graphicDesign: number | null;
-    animation: number | null;
-    dataAnalysis: number | null;
-    hpLife: number | null;
-  };
+  assessmentAverages: AssessmentAverage[];
   trainees: TraineeReportRow[];
   attendance: AttendanceReportRow[];
   assessments: AssessmentReportRow[];
@@ -160,11 +158,12 @@ export function ReportsClient({
     download(
       "assessments.csv",
       toCsv(
-        ["Trainee", "Registration number", "Graphic Design", "2D & 3D Animation", "Data Analysis", "HP LIFE", "Average"],
+        ["Trainee", "Registration number", ...assessmentAverages.map((avg) => avg.courseName), "Average"],
         assessments.map((row) => {
-          const values = [row.graphicDesign, row.animation, row.dataAnalysis, row.hpLife].filter(
-            (value): value is number => value !== null
-          );
+          const scoreByCourse = new Map(row.scores.map((score) => [score.courseId, score.score]));
+          const values = assessmentAverages
+            .map((avg) => scoreByCourse.get(avg.courseId) ?? null)
+            .filter((value): value is number => value !== null);
           const average =
             values.length === 0
               ? null
@@ -172,10 +171,7 @@ export function ReportsClient({
           return [
             row.traineeName,
             row.registrationNumber,
-            row.graphicDesign,
-            row.animation,
-            row.dataAnalysis,
-            row.hpLife,
+            ...assessmentAverages.map((avg) => scoreByCourse.get(avg.courseId) ?? null),
             average,
           ];
         })
@@ -259,10 +255,13 @@ export function ReportsClient({
           className="lg:col-span-2"
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Graphic Design" value={assessmentAverages.graphicDesign !== null ? `${assessmentAverages.graphicDesign}%` : "—"} />
-            <Stat label="2D & 3D Animation" value={assessmentAverages.animation !== null ? `${assessmentAverages.animation}%` : "—"} />
-            <Stat label="Data Analysis" value={assessmentAverages.dataAnalysis !== null ? `${assessmentAverages.dataAnalysis}%` : "—"} />
-            <Stat label="HP LIFE" value={assessmentAverages.hpLife !== null ? `${assessmentAverages.hpLife}%` : "—"} />
+            {assessmentAverages.map((avg) => (
+              <Stat
+                key={avg.courseId}
+                label={avg.courseName}
+                value={avg.average !== null ? `${avg.average}%` : "—"}
+              />
+            ))}
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
             {assessments.length} trainee assessments exported.

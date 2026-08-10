@@ -2,8 +2,9 @@ import { asc, avg, count, desc, eq } from "drizzle-orm";
 import { ReportsClient } from "@/components/reports/reports-client";
 import { requireStaff } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { assessments, attendance, trainees } from "@/db/schema";
+import { assessmentScores, attendance, trainees } from "@/db/schema";
 import { settleAttendance } from "@/lib/attendance-settle";
+import { listCourses } from "@/lib/courses";
 
 export const metadata = { title: "Reports" };
 
@@ -33,7 +34,8 @@ export default async function ReportsPage() {
     averageRows,
     traineeRows,
     attendanceRows,
-    assessmentRows,
+    scoreRows,
+    courseRows,
   ] = await Promise.all([
     database.select({ value: count() }).from(trainees),
     database.select({ value: count() }).from(trainees).where(eq(trainees.status, "active")),
@@ -46,13 +48,9 @@ export default async function ReportsPage() {
     database.select({ value: count() }).from(attendance).where(eq(attendance.status, "present")),
     database.select({ value: count() }).from(attendance).where(eq(attendance.status, "absent")),
     database
-      .select({
-        graphicDesign: avg(assessments.graphicDesign),
-        animation: avg(assessments.animation),
-        dataAnalysis: avg(assessments.dataAnalysis),
-        hpLife: avg(assessments.hpLife),
-      })
-      .from(assessments),
+      .select({ courseId: assessmentScores.courseId, value: avg(assessmentScores.score) })
+      .from(assessmentScores)
+      .groupBy(assessmentScores.courseId),
     database
       .select({
         registrationNumber: trainees.registrationNumber,
@@ -78,17 +76,37 @@ export default async function ReportsPage() {
       .select({
         traineeName: trainees.fullName,
         registrationNumber: trainees.registrationNumber,
-        graphicDesign: assessments.graphicDesign,
-        animation: assessments.animation,
-        dataAnalysis: assessments.dataAnalysis,
-        hpLife: assessments.hpLife,
+        courseId: assessmentScores.courseId,
+        score: assessmentScores.score,
       })
-      .from(assessments)
-      .innerJoin(trainees, eq(assessments.traineeId, trainees.id))
+      .from(assessmentScores)
+      .innerJoin(trainees, eq(assessmentScores.traineeId, trainees.id))
       .orderBy(asc(trainees.fullName)),
+    listCourses(),
   ]);
 
-  const averages = averageRows[0];
+  const averageByCourse = new Map(
+    averageRows.map((row) => [row.courseId, toAverage(row.value)])
+  );
+  const assessmentAverages = courseRows.map((course) => ({
+    courseId: course.id,
+    courseName: course.name,
+    average: averageByCourse.get(course.id) ?? null,
+  }));
+
+  // Group score rows per trainee (one row per trainee in the report table).
+  const scoreByTrainee = new Map<string, { courseId: string; score: number }[]>();
+  for (const row of scoreRows) {
+    const key = `${row.traineeName}|${row.registrationNumber ?? ""}`;
+    const list = scoreByTrainee.get(key) ?? [];
+    list.push({ courseId: row.courseId, score: row.score });
+    scoreByTrainee.set(key, list);
+  }
+  const assessments = [...scoreByTrainee.entries()].map(([key, scores]) => {
+    const [traineeName, registrationNumber] = key.split("|");
+    return { traineeName: traineeName ?? "", registrationNumber: registrationNumber || null, scores };
+  });
+
   const present = presentCount[0]?.value ?? 0;
   const absent = absentCount[0]?.value ?? 0;
   const attendanceRate = present + absent === 0 ? null : Math.round((present / (present + absent)) * 100);
@@ -107,12 +125,7 @@ export default async function ReportsPage() {
         absent,
         rate: attendanceRate,
       }}
-      assessmentAverages={{
-        graphicDesign: toAverage(averages?.graphicDesign ?? null),
-        animation: toAverage(averages?.animation ?? null),
-        dataAnalysis: toAverage(averages?.dataAnalysis ?? null),
-        hpLife: toAverage(averages?.hpLife ?? null),
-      }}
+      assessmentAverages={assessmentAverages}
       trainees={traineeRows.map((row) => ({
         registrationNumber: row.registrationNumber,
         fullName: row.fullName,
@@ -127,14 +140,7 @@ export default async function ReportsPage() {
         registrationNumber: row.registrationNumber,
         status: row.status,
       }))}
-      assessments={assessmentRows.map((row) => ({
-        traineeName: row.traineeName,
-        registrationNumber: row.registrationNumber,
-        graphicDesign: row.graphicDesign,
-        animation: row.animation,
-        dataAnalysis: row.dataAnalysis,
-        hpLife: row.hpLife,
-      }))}
+      assessments={assessments}
     />
   );
 }

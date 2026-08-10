@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpen,
   CalendarDays,
   ClipboardCheck,
   GraduationCap,
@@ -20,6 +21,7 @@ export const masterNavItems = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit log", icon: ScrollText },
   { href: "/staff", label: "Staff", icon: UserCircle },
+  { href: "/how-to-use", label: "How to Use", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -31,6 +33,7 @@ export const adminNavItems = [
   { href: "/schedule", label: "Training Schedule", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit log", icon: ScrollText },
+  { href: "/how-to-use", label: "How to Use", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

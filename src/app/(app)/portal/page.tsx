@@ -11,7 +11,7 @@ import {
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { assessments, trainees } from "@/db/schema";
+import { assessmentScores, courses, trainees } from "@/db/schema";
 import { formatWeek } from "@/lib/date";
 
 export const metadata = { title: "My dashboard" };
@@ -39,28 +39,25 @@ export default async function PortalPage() {
     );
   }
 
-  const [assessmentRows] = await Promise.all([
+  const [latestRows, courseRows] = await Promise.all([
     db()
       .select({
-        week: assessments.week,
-        graphicDesign: assessments.graphicDesign,
-        animation: assessments.animation,
-        dataAnalysis: assessments.dataAnalysis,
-        hpLife: assessments.hpLife,
+        week: assessmentScores.week,
+        courseId: assessmentScores.courseId,
+        score: assessmentScores.score,
       })
-      .from(assessments)
-      .where(eq(assessments.traineeId, trainee.id))
-      .orderBy(desc(assessments.week))
-      .limit(1),
+      .from(assessmentScores)
+      .where(eq(assessmentScores.traineeId, trainee.id))
+      .orderBy(desc(assessmentScores.week)),
+    db().select({ id: courses.id, name: courses.name }).from(courses),
   ]);
 
-  const assessment = assessmentRows[0];
-  const scoreEntries = [
-    { label: "Graphic Design", value: assessment?.graphicDesign ?? null },
-    { label: "2D & 3D Animation", value: assessment?.animation ?? null },
-    { label: "Data Analysis", value: assessment?.dataAnalysis ?? null },
-    { label: "HP LIFE", value: assessment?.hpLife ?? null },
-  ];
+  const latestWeek = latestRows[0]?.week ?? null;
+  const latestRowsForWeek = latestRows.filter((row) => row.week === latestWeek);
+  const scoreEntries = courseRows.map((course) => {
+    const match = latestRowsForWeek.find((row) => row.courseId === course.id);
+    return { label: course.name, value: match?.score ?? null };
+  });
   const recorded = scoreEntries
     .map((entry) => entry.value)
     .filter((value): value is number => value !== null);
@@ -97,7 +94,7 @@ export default async function PortalPage() {
               Assessments
             </CardTitle>
             <CardDescription>
-              Your latest recorded scores{assessment ? ` (${formatWeek(assessment.week)})` : ""}.
+              Your latest recorded scores{latestWeek ? ` (${formatWeek(latestWeek)})` : ""}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -122,7 +119,7 @@ export default async function PortalPage() {
               </div>
               <p className="text-xl font-semibold">{average !== null ? `${average}%` : "—"}</p>
             </div>
-            {!assessment ? (
+            {latestRows.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No assessments recorded yet.
               </p>

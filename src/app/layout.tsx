@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     "Training management system for the OYA / HYPREP Digital Skills Training Programme.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

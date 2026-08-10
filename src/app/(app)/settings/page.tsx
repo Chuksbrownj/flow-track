@@ -1,6 +1,10 @@
-import { Building2, Info, ShieldCheck } from "lucide-react";
+import { BookOpen, Building2, Info, ShieldCheck } from "lucide-react";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { CoursesManager } from "@/components/settings/courses-manager";
 import { requireStaff } from "@/lib/auth-guard";
+import { db } from "@/db/client";
+import { courses } from "@/db/schema";
+import { asc } from "drizzle-orm";
 import {
   Card,
   CardContent,
@@ -21,7 +25,11 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 export default async function SettingsPage() {
-  await requireStaff();
+  const user = await requireStaff();
+  const isMaster = user.role === "master_admin";
+
+  const courseRows = await db().select().from(courses).orderBy(asc(courses.name));
+
   return (
     <div className="space-y-6">
       <div>
@@ -58,6 +66,30 @@ export default async function SettingsPage() {
             <p className="text-sm text-muted-foreground">
               Training management system for the OYA / HYPREP Digital Skills Training Programme.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-primary" />
+              Courses
+            </CardTitle>
+            <CardDescription>
+              {isMaster
+                ? "Manage the programme's active courses. They drive the score sheet columns and exam topics."
+                : "The active programme courses. Only the master admin can change these."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CoursesManager
+              isMaster={isMaster}
+              courses={courseRows.map((course) => ({
+                id: course.id,
+                name: course.name,
+                active: course.active,
+              }))}
+            />
           </CardContent>
         </Card>
 

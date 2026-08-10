@@ -22,15 +22,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { saveAssessment, type AssessmentInput, type ScoreKey } from "@/lib/actions/assessments";
+import { saveAssessment, type AssessmentInput } from "@/lib/actions/assessments";
 import { formatWeek } from "@/lib/date";
 
-const CATEGORIES: { key: ScoreKey; label: string; short: string }[] = [
-  { key: "graphicDesign", label: "Graphic Design", short: "GD" },
-  { key: "dataAnalysis", label: "Data Analysis", short: "DA" },
-  { key: "animation", label: "2D/3D Animation", short: "2D/3D" },
-  { key: "hpLife", label: "HP LIFE", short: "HP" },
-];
+export type CourseOption = { id: string; name: string };
 
 export type TraineeRow = {
   id: string;
@@ -39,34 +34,39 @@ export type TraineeRow = {
   status: string;
 };
 
-export type ScoreRow = {
-  graphicDesign: number | null;
-  animation: number | null;
-  dataAnalysis: number | null;
-  hpLife: number | null;
-};
+/** Scores for a trainee keyed by course id. */
+export type ScoreRow = Record<string, number>;
 
 export type WeekOption = { value: string; label: string };
 
-function emptyDraft(): Record<ScoreKey, string> {
-  return { graphicDesign: "", animation: "", dataAnalysis: "", hpLife: "" };
+/** Short header label, e.g. "Graphic Design" → "GD", "2D & 3D Animation" → "2D/3D". */
+function shortCourse(name: string): string {
+  const trimmed = name.trim();
+  if (/^2d/i.test(trimmed) || /^3d/i.test(trimmed)) return "2D/3D";
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return words
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 3);
 }
 
-function draftFrom(row: ScoreRow | undefined): Record<ScoreKey, string> {
-  if (!row) return emptyDraft();
-  return {
-    graphicDesign: row.graphicDesign?.toString() ?? "",
-    animation: row.animation?.toString() ?? "",
-    dataAnalysis: row.dataAnalysis?.toString() ?? "",
-    hpLife: row.hpLife?.toString() ?? "",
-  };
+function emptyDraft(courses: CourseOption[]): Record<string, string> {
+  return Object.fromEntries(courses.map((course) => [course.id, ""]));
 }
 
-function totals(draft: Record<ScoreKey, string>) {
+function draftFrom(row: ScoreRow | undefined, courses: CourseOption[]): Record<string, string> {
+  if (!row) return emptyDraft(courses);
+  return Object.fromEntries(
+    courses.map((course) => [course.id, row[course.id]?.toString() ?? ""])
+  );
+}
+
+function totals(draft: Record<string, string>, courses: CourseOption[]) {
   let total = 0;
   let entered = 0;
-  for (const category of CATEGORIES) {
-    const raw = draft[category.key].trim();
+  for (const course of courses) {
+    const raw = draft[course.id].trim();
     if (raw === "") continue;
     const num = Number(raw);
     if (Number.isInteger(num)) {
@@ -74,7 +74,10 @@ function totals(draft: Record<ScoreKey, string>) {
       entered += 1;
     }
   }
-  return { total, percent: entered === 0 ? null : Math.round((total / 4) * 10) / 10 };
+  return {
+    total,
+    percent: entered === 0 ? null : Math.round((total / courses.length) * 10) / 10,
+  };
 }
 
 export function AssessmentsClient({
@@ -82,21 +85,24 @@ export function AssessmentsClient({
   initialAssessments,
   week,
   weeks,
+  courses,
 }: {
   trainees: TraineeRow[];
-  /** Scores for the currently selected week, keyed by trainee id. */
+  /** Scores for the currently selected week, keyed by trainee id then course id. */
   initialAssessments: Record<string, ScoreRow>;
   /** Currently selected week (Monday of the week, YYYY-MM-DD). */
   week: string;
   /** Selectable weeks, newest first. */
   weeks: WeekOption[];
+  /** Active courses — one score column per course. */
+  courses: CourseOption[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, Record<ScoreKey, string>>>(() => {
-    const map: Record<string, Record<ScoreKey, string>> = {};
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(() => {
+    const map: Record<string, Record<string, string>> = {};
     for (const trainee of trainees) {
-      map[trainee.id] = draftFrom(initialAssessments[trainee.id]);
+      map[trainee.id] = draftFrom(initialAssessments[trainee.id], courses);
     }
     return map;
   });
@@ -113,10 +119,10 @@ export function AssessmentsClient({
     );
   }, [trainees, query]);
 
-  function setScore(traineeId: string, key: ScoreKey, value: string) {
+  function setScore(traineeId: string, courseId: string, value: string) {
     setDrafts((prev) => ({
       ...prev,
-      [traineeId]: { ...prev[traineeId], [key]: value },
+      [traineeId]: { ...prev[traineeId], [courseId]: value },
     }));
   }
 
@@ -126,15 +132,15 @@ export function AssessmentsClient({
 
     const scores: AssessmentInput = {};
     let hasScore = false;
-    for (const category of CATEGORIES) {
-      const raw = draft[category.key].trim();
+    for (const course of courses) {
+      const raw = draft[course.id].trim();
       if (raw === "") continue;
       const num = Number(raw);
       if (!Number.isInteger(num) || num < 0 || num > 100) {
-        toast.error(`${category.label} must be a whole number between 0 and 100.`);
+        toast.error(`${course.name} must be a whole number between 0 and 100.`);
         return;
       }
-      scores[category.key] = num;
+      scores[course.id] = num;
       hasScore = true;
     }
     if (!hasScore) {
@@ -166,7 +172,7 @@ export function AssessmentsClient({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Score sheet</h1>
           <p className="text-sm text-muted-foreground">
-            Weekly scores out of 100 per programme area. Grand total and percentage are calculated
+            Weekly scores out of 100 per course. Grand total and percentage are calculated
             automatically.
           </p>
         </div>
@@ -229,9 +235,9 @@ export function AssessmentsClient({
                   <TableRow>
                     <TableHead>OYA ID</TableHead>
                     <TableHead>Name</TableHead>
-                    {CATEGORIES.map((category) => (
-                      <TableHead key={category.key} title={category.label}>
-                        {category.short}
+                    {courses.map((course) => (
+                      <TableHead key={course.id} title={course.name}>
+                        {shortCourse(course.name)}
                         <span className="block text-[10px] font-normal text-muted-foreground">
                           /100
                         </span>
@@ -244,8 +250,8 @@ export function AssessmentsClient({
                 </TableHeader>
                 <TableBody>
                   {filtered.map((trainee) => {
-                    const draft = drafts[trainee.id] ?? emptyDraft();
-                    const { total, percent } = totals(draft);
+                    const draft = drafts[trainee.id] ?? emptyDraft(courses);
+                    const { total, percent } = totals(draft, courses);
                     const busy = savingId === trainee.id;
                     return (
                       <TableRow key={trainee.id}>
@@ -253,18 +259,18 @@ export function AssessmentsClient({
                           {trainee.registrationNumber ?? "—"}
                         </TableCell>
                         <TableCell className="min-w-32">{trainee.fullName}</TableCell>
-                        {CATEGORIES.map((category) => (
-                          <TableCell key={category.key}>
+                        {courses.map((course) => (
+                          <TableCell key={course.id}>
                             <Input
                               type="number"
                               inputMode="numeric"
                               min={0}
                               max={100}
                               placeholder="—"
-                              aria-label={`${trainee.fullName} ${category.label}`}
-                              value={draft[category.key]}
+                              aria-label={`${trainee.fullName} ${course.name}`}
+                              value={draft[course.id]}
                               onChange={(event) =>
-                                setScore(trainee.id, category.key, event.target.value)
+                                setScore(trainee.id, course.id, event.target.value)
                               }
                               className="h-9 w-16"
                             />

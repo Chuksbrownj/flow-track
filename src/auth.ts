@@ -25,6 +25,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         let user:
           | (typeof users.$inferSelect & { topic: string | null })
           | undefined;
+        let traineeStatus: string | null = null;
         if (identifier.includes("@")) {
           const [row] = await db()
             .select()
@@ -32,12 +33,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             .where(eq(users.email, identifier.toLowerCase()))
             .limit(1);
           user = row;
+          if (user && user.role === "student") {
+            const [trainee] = await db()
+              .select({ status: trainees.status })
+              .from(trainees)
+              .where(eq(trainees.userId, user.id))
+              .limit(1);
+            traineeStatus = trainee?.status ?? null;
+          }
         } else {
           const [trainee] = await db()
-            .select({ userId: trainees.userId })
+            .select({ userId: trainees.userId, status: trainees.status })
             .from(trainees)
             .where(eq(trainees.registrationNumber, identifier.toUpperCase()))
             .limit(1);
+          traineeStatus = trainee?.status ?? null;
           if (trainee?.userId) {
             const [row] = await db()
               .select()
@@ -48,6 +58,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
         if (!user) return null;
+
+        // Suspended (dormant) and marked-for-deletion students cannot sign in.
+        if (user.role === "student" && (traineeStatus === "dormant" || traineeStatus === "deleted")) {
+          return null;
+        }
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;

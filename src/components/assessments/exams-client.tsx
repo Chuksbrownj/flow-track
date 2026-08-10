@@ -14,6 +14,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   Users,
@@ -60,6 +61,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  addExamQuestion,
   closeExam,
   createExam,
   deleteExam,
@@ -67,10 +69,10 @@ import {
   importQuestions,
   openExam,
   overrideSubmission,
+  reopenExam,
   updateExamDetails,
 } from "@/lib/actions/exams";
 import { questionTemplateCsv } from "@/lib/assessment-import";
-import { TOPIC_LABELS } from "@/lib/topics";
 
 export type SubmissionRow = {
   id: string;
@@ -119,10 +121,13 @@ export function ExamsClient({
   exams,
   canCreateAnyTopic,
   trainerTopic,
+  courses,
 }: {
   exams: ExamListItem[];
   canCreateAnyTopic: boolean;
   trainerTopic: string | null;
+  /** Active course names (dynamic) used for the exam topic select. */
+  courses: string[];
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
@@ -130,6 +135,9 @@ export function ExamsClient({
   const [openTarget, setOpenTarget] = useState<ExamListItem | null>(null);
   const [editTarget, setEditTarget] = useState<ExamListItem | null>(null);
   const [gradeTarget, setGradeTarget] = useState<{ submission: SubmissionRow; exam: ExamListItem } | null>(null);
+  const [addQuestionTarget, setAddQuestionTarget] = useState<ExamListItem | null>(null);
+  const [closeTarget, setCloseTarget] = useState<ExamListItem | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<ExamListItem | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -169,6 +177,7 @@ export function ExamsClient({
             <CreateExamForm
               canCreateAnyTopic={canCreateAnyTopic}
               trainerTopic={trainerTopic}
+              courses={courses}
               onSubmit={(formData) => {
                 setPendingId("new");
                 startTransition(async () => {
@@ -196,7 +205,8 @@ export function ExamsClient({
             </div>
             <p className="text-sm font-medium">No exams yet</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Create your first exam, then upload questions from a CSV or Excel file.
+              Create your first exam, then add questions one by one or upload them from a CSV,
+              Excel or Word (.docx) file.
             </p>
           </CardContent>
         </Card>
@@ -234,6 +244,15 @@ export function ExamsClient({
                             busy={busy}
                             onUpload={(formData) => run(exam.id, () => importQuestions(exam.id, formData))}
                           />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => setAddQuestionTarget(exam)}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add question
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -281,10 +300,20 @@ export function ExamsClient({
                           variant="outline"
                           size="sm"
                           className="gap-1.5 text-destructive"
-                          onClick={() => run(exam.id, () => closeExam(exam.id))}
+                          onClick={() => setCloseTarget(exam)}
                         >
                           <XCircle className="h-4 w-4" />
                           Close
+                        </Button>
+                      ) : exam.status === "closed" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-primary"
+                          onClick={() => setReopenTarget(exam)}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          Reopen
                         </Button>
                       ) : null}
                       <Button
@@ -420,6 +449,71 @@ export function ExamsClient({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={addQuestionTarget !== null}
+        onOpenChange={(open) => !open && setAddQuestionTarget(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {addQuestionTarget ? (
+            <AddQuestionForm
+              key={addQuestionTarget.id}
+              exam={addQuestionTarget}
+              onSubmit={(formData) =>
+                run(addQuestionTarget.id, () => addExamQuestion(addQuestionTarget.id, formData))
+              }
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={closeTarget !== null} onOpenChange={(open) => !open && setCloseTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close this exam?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{closeTarget?.title}&quot; will be closed. Trainees can no longer start or submit
+              it. You can reopen it later if this was a mistake.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => closeTarget && run(closeTarget.id, () => closeExam(closeTarget.id))}
+            >
+              <XCircle className="h-4 w-4" />
+              Close exam
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={reopenTarget !== null} onOpenChange={(open) => !open && setReopenTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen this exam?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{reopenTarget?.title}&quot; will be reopened so trainees can continue or retake it.
+              The window restarts from now (24 hours if the original closing time already passed).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!reopenTarget) return;
+                const id = reopenTarget.id;
+                setReopenTarget(null);
+                run(id, () => reopenExam(id));
+              }}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reopen exam
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -427,13 +521,15 @@ export function ExamsClient({
 function CreateExamForm({
   canCreateAnyTopic,
   trainerTopic,
+  courses,
   onSubmit,
 }: {
   canCreateAnyTopic: boolean;
   trainerTopic: string | null;
+  courses: string[];
   onSubmit: (formData: FormData) => void;
 }) {
-  const [topic, setTopic] = useState<string>(trainerTopic ?? TOPIC_LABELS[0]);
+  const [topic, setTopic] = useState<string>(trainerTopic ?? courses[0] ?? "");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -448,7 +544,8 @@ function CreateExamForm({
           New exam
         </DialogTitle>
         <DialogDescription>
-          Create a draft, then upload questions from a CSV or Excel file.
+          Create a draft, then add questions manually or upload them from a CSV, Excel or Word
+          (.docx) file.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-2">
@@ -463,7 +560,7 @@ function CreateExamForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {TOPIC_LABELS.map((label) => (
+              {courses.map((label) => (
                 <SelectItem key={label} value={label}>
                   {label}
                 </SelectItem>
@@ -521,12 +618,11 @@ function UploadQuestionsButton({
       >
         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
         Upload questions
-      </Button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".csv,.xlsx,.xls"
-        className="hidden"
+      </Button>        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,.xlsx,.xls,.docx"
+          className="hidden"
         onChange={(event) => {
           handleFile(event.target.files?.[0]);
           event.target.value = "";
@@ -537,6 +633,96 @@ function UploadQuestionsButton({
         Template
       </Button>
     </div>
+  );
+}
+
+/** One-at-a-time manual question entry (form-based question builder). */
+function AddQuestionForm({
+  exam,
+  onSubmit,
+}: {
+  exam: ExamListItem;
+  onSubmit: (formData: FormData) => void;
+}) {
+  const [type, setType] = useState<"objective" | "written">("objective");
+  const [correct, setCorrect] = useState("0");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSubmit(new FormData(event.currentTarget));
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <FileUp className="h-4 w-4 text-primary" />
+          Add question to &quot;{exam.title}&quot;
+        </DialogTitle>
+        <DialogDescription>
+          Build questions one at a time. Save and add another, or close this dialog when done.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-2">
+        <Label>Type</Label>
+        <Select
+          value={type}
+          onValueChange={(value) => setType(value as "objective" | "written")}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="objective">Multiple choice (objective)</SelectItem>
+            <SelectItem value="written">Written</SelectItem>
+          </SelectContent>
+        </Select>
+        <input type="hidden" name="type" value={type} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="question-prompt">Question</Label>
+        <Textarea id="question-prompt" name="prompt" rows={2} required placeholder="Enter the question text" />
+      </div>
+      {type === "objective" ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((index) => (
+            <div key={index} className="space-y-2">
+              <Label htmlFor={`option-${index}`}>Option {String.fromCharCode(65 + index)}</Label>
+              <Input id={`option-${index}`} name={`option${index}`} placeholder="Answer option" required />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {type === "objective" ? (
+          <div className="space-y-2">
+            <Label htmlFor="correct">Correct option</Label>
+            <Select value={correct} onValueChange={setCorrect}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">A</SelectItem>
+                <SelectItem value="1">B</SelectItem>
+                <SelectItem value="2">C</SelectItem>
+                <SelectItem value="3">D</SelectItem>
+              </SelectContent>
+            </Select>
+            <input type="hidden" name="correctOption" value={correct} />
+          </div>
+        ) : null}
+        <div className="space-y-2">
+          <Label htmlFor="question-points">Points</Label>
+          <Input id="question-points" name="points" type="number" min={1} max={100} required defaultValue={1} />
+        </div>
+      </div>
+      <DialogFooter showCloseButton={false}>
+        <Button type="submit">
+          <Plus className="h-4 w-4" />
+          Add question
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 
