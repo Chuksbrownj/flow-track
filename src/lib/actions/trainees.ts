@@ -613,13 +613,13 @@ export async function markTraineeDeleted(id: string): Promise<ActionResult> {
  * for deletion more than 1 week ago. Called from staff pages before reading
  * trainee data so the purge needs no cron service.
  */
-export async function purgeDeletedTrainees() {
+export async function purgeDeletedTrainees(): Promise<number> {
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const doomed = await db()
     .select({ id: trainees.id, userId: trainees.userId })
     .from(trainees)
     .where(and(eq(trainees.status, "deleted"), lt(trainees.deletedAt, cutoff)));
-  if (doomed.length === 0) return;
+  if (doomed.length === 0) return 0;
 
   const ids = doomed.map((row) => row.id);
   const userIds = doomed.map((row) => row.userId).filter((value): value is string => !!value);
@@ -631,7 +631,9 @@ export async function purgeDeletedTrainees() {
     }
   } catch (error) {
     console.error("purgeDeletedTrainees: could not purge records", error);
+    return 0;
   }
+  return doomed.length;
 }
 
 export async function approveTrainee(id: string): Promise<ActionResult> {

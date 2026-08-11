@@ -71,36 +71,6 @@ export async function sendSupportTicketConfirmation(to: string, ticketNumber: st
   );
 }
 
-export async function sendSupportTicketNotice(
-  to: string[],
-  ticket: {
-    ticketNumber: string;
-    name: string;
-    email: string;
-    phone: string | null;
-    registrationNumber: string | null;
-    description: string;
-  }
-) {
-  return sendEmail(
-    to[0] ?? "",
-    `New support ticket ${ticket.ticketNumber} — ${ticket.name}`,
-    [
-      "<div style=\"font-family: sans-serif; max-width: 480px; margin: 0 auto;\">",
-      `<h2 style="color: #0f172a;">Support ticket ${ticket.ticketNumber}</h2>`,
-      "<table style=\"border-collapse: collapse; margin: 12px 0; width: 100%;\">",
-      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Name</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(ticket.name)}</td></tr>`,
-      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Email</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(ticket.email)}</td></tr>`,
-      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Phone</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(ticket.phone ?? "—")}</td></tr>`,
-      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Registration</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(ticket.registrationNumber ?? "—")}</td></tr>`,
-      "</table>",
-      `<p style="color: #334155;"><strong>Issue:</strong></p>`,
-      `<p style="color: #334155; white-space: pre-wrap;">${escapeHtml(ticket.description)}</p>`,
-      "</div>",
-    ].join("")
-  );
-}
-
 export async function sendSuspendRequestNotice(
   to: string[],
   request: { traineeName: string; reason: string; requestedBy: string }

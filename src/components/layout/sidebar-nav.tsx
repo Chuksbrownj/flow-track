@@ -6,9 +6,12 @@ import { adminNavItems, masterNavItems, traineeNavItems } from "./nav-items";
 
 export function SidebarNav({
   role,
+  openTicketCount = 0,
   onNavigate,
 }: {
   role: string;
+  /** Unresolved support tickets — shown as a badge on the Support item. */
+  openTicketCount?: number;
   /** Called after a nav item is clicked (e.g. to close the mobile drawer). */
   onNavigate?: () => void;
 }) {
@@ -36,7 +39,12 @@ export function SidebarNav({
             }`}
           >
             <item.icon className="h-4 w-4 shrink-0" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.href === "/support" && openTicketCount > 0 ? (
+              <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground tabular-nums">
+                {openTicketCount}
+              </span>
+            ) : null}
           </Link>
         );
       })}

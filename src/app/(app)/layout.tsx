@@ -6,6 +6,7 @@ import { SidebarProvider } from "@/components/layout/sidebar-context";
 import { SidebarToggle } from "@/components/layout/sidebar-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { countOpenSupportTickets } from "@/lib/actions/support";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -18,13 +19,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ? session.user.name ?? "Admin"
         : session.user.name?.trim().split(/\s+/)[0] || "Student";
 
+  const isStaff = role === "master_admin" || role === "admin";
+  const openTicketCount = isStaff ? await countOpenSupportTickets() : 0;
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-muted/40">
-        <Sidebar role={role} />
+        <Sidebar role={role} openTicketCount={openTicketCount} />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:px-6">
-            <MobileNav role={role} />
+            <MobileNav role={role} openTicketCount={openTicketCount} />
             <SidebarToggle role={role} />
             <div className="ml-auto flex items-center gap-2 md:gap-3">
               <ThemeToggle />

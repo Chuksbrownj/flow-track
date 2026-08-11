@@ -4,7 +4,6 @@ import { requireStaff } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { suspendRequests, trainees } from "@/db/schema";
 import { listTraineeLogs } from "@/lib/trainee-logs";
-import { purgeDeletedTrainees } from "@/lib/actions/trainees";
 
 export const metadata = { title: "Trainees" };
 
@@ -12,9 +11,8 @@ export default async function TraineesPage() {
   const user = await requireStaff();
   const isMaster = user.role === "master_admin";
 
-  // Lazily purge records marked for deletion more than a week ago.
-  await purgeDeletedTrainees();
-
+  // Records marked for deletion are purged by the daily cron job
+  // (src/app/api/cron/purge) — no lazy purge on page load.
   const [rows, changeLogs, requestRows] = await Promise.all([
     db().select().from(trainees).orderBy(asc(trainees.createdAt)),
     isMaster ? listTraineeLogs() : Promise.resolve([]),

@@ -28,7 +28,9 @@ export type AuditAction =
   | "suspend_requested"
   | "suspend_confirmed"
   | "suspend_rejected"
-  | "course_added";
+  | "course_added"
+  | "ticket_resolved"
+  | "ticket_reopened";
 
 export type AuditEntityType =
   | "trainee"
@@ -39,7 +41,8 @@ export type AuditEntityType =
   | "exam"
   | "profile"
   | "auth"
-  | "course";
+  | "course"
+  | "support";
 
 export type AuditLogRow = {
   id: string;
@@ -104,7 +107,8 @@ export async function listAuditLogs(opts: {
               eq(auditLogs.entityType, "trainee"),
               eq(auditLogs.entityType, "attendance"),
               eq(auditLogs.entityType, "score_sheet"),
-              eq(auditLogs.entityType, "profile")
+              eq(auditLogs.entityType, "profile"),
+              eq(auditLogs.entityType, "support")
             )
           )
           .orderBy(desc(auditLogs.createdAt))
@@ -140,7 +144,9 @@ export function describeAudit(row: AuditLogRow): string {
                   ? "Profile"
                   : row.entityType === "course"
                     ? "Course"
-                    : "Account";
+                    : row.entityType === "support"
+                      ? "Support ticket"
+                      : "Account";
   const action =
     row.action === "created"
       ? "created"
@@ -190,10 +196,13 @@ export function describeAudit(row: AuditLogRow): string {
                                               : row.action === "suspend_confirmed"
                                                 ? "confirmed suspension"
                                               : row.action === "suspend_rejected"
-                                                ? "rejected suspension request"
-                                              : row.action === "course_added"
-                                                ? "added course"
-                                              : row.action;
+                                                ? "rejected suspension request"                : row.action === "course_added"
+                  ? "added course"
+                  : row.action === "ticket_resolved"
+                    ? "resolved"
+                    : row.action === "ticket_reopened"
+                      ? "reopened"
+                      : row.action;
   return `${entity} ${action}`;
 }
 

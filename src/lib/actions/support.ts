@@ -1,13 +1,33 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { supportTickets, users } from "@/db/schema";
 import { isValidEmail } from "@/lib/validation";
-import { sendSupportTicketConfirmation, sendSupportTicketNotice } from "@/lib/email";
+import { sendSupportTicketConfirmation } from "@/lib/email";
+import { recordAudit } from "@/lib/audit";
+import { requireStaff } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
+export type ActionResult = { ok: boolean; error?: string; message?: string };
+
 export type SupportResult = { ok: boolean; error?: string; ticketNumber?: string };
+
+export type SupportTicketRow = {
+  id: string;
+  ticketNumber: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  registrationNumber: string | null;
+  description: string;
+  status: string;
+  handledById: string | null;
+  handledByName: string | null;
+  handledAt: string | null;
+  adminNote: string | null;
+  createdAt: string;
+};
 
 function value(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -28,7 +48,8 @@ const SUPPORT_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Creates a support ticket from the public "Contact Admin" form and emails the
- * ticket number to the submitter, with the details routed to the admin team.
+ * ticket number to the submitter. Tickets are handled from the staff Support
+ * page — no admin email notification is sent.
  */
 export async function submitSupportTicket(formData: FormData): Promise<SupportResult> {
   const name = value(formData, "name");
@@ -75,31 +96,6 @@ export async function submitSupportTicket(formData: FormData): Promise<SupportRe
   // Email the ticket number to the submitter.
   const confirmed = await sendSupportTicketConfirmation(email, ticketNumber, name);
 
-  // Route the details to the admin team (master admin emails, or env override).
-  let admins: string[] = [];
-  const override = process.env.SUPPORT_EMAIL;
-  if (override) {
-    admins = [override];
-  } else {
-    const rows = await db()
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.role, "master_admin"));
-    admins = rows
-      .map((row) => row.email)
-      .filter((emailValue): emailValue is string => !!emailValue);
-  }
-  if (admins.length > 0) {
-    await sendSupportTicketNotice(admins, {
-      ticketNumber,
-      name,
-      email,
-      phone,
-      registrationNumber,
-      description,
-    });
-  }
-
   if (!confirmed) {
     return {
       ok: true,
@@ -108,4 +104,116 @@ export async function submitSupportTicket(formData: FormData): Promise<SupportRe
     };
   }
   return { ok: true, ticketNumber };
+}
+
+/** Number of unresolved tickets — shown as a badge in the staff sidebar. */
+export async function countOpenSupportTickets(): Promise<number> {
+  await requireStaff();
+  const [row] = await db()
+    .select({ value: count() })
+    .from(supportTickets)
+    .where(eq(supportTickets.status, "open"));
+  return row?.value ?? 0;
+}
+
+/** All support tickets, newest first, with the name of the admin who handled them. */
+export async function listSupportTickets(): Promise<SupportTicketRow[]> {
+  await requireStaff();
+  const rows = await db()
+    .select({
+      id: supportTickets.id,
+      ticketNumber: supportTickets.ticketNumber,
+      name: supportTickets.name,
+      email: supportTickets.email,
+      phone: supportTickets.phone,
+      registrationNumber: supportTickets.registrationNumber,
+      description: supportTickets.description,
+      status: supportTickets.status,
+      handledById: supportTickets.handledById,
+      handledByName: users.name,
+      handledAt: supportTickets.handledAt,
+      adminNote: supportTickets.adminNote,
+      createdAt: supportTickets.createdAt,
+    })
+    .from(supportTickets)
+    .leftJoin(users, eq(users.id, supportTickets.handledById))
+    .orderBy(desc(supportTickets.createdAt));
+
+  return rows.map((row) => ({
+    ...row,
+    handledAt: row.handledAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+/** Marks a ticket as resolved, recording who handled it and an optional note. */
+export async function resolveSupportTicket(ticketId: string, note: string): Promise<ActionResult> {
+  const user = await requireStaff();
+  const adminNote = note.trim().slice(0, 500);
+
+  try {
+    const [ticket] = await db()
+      .select({ ticketNumber: supportTickets.ticketNumber })
+      .from(supportTickets)
+      .where(eq(supportTickets.id, ticketId))
+      .limit(1);
+    if (!ticket) return { ok: false, error: "Ticket not found." };
+
+    await db()
+      .update(supportTickets)
+      .set({
+        status: "resolved",
+        handledById: user.id,
+        handledAt: new Date(),
+        adminNote: adminNote || null,
+      })
+      .where(eq(supportTickets.id, ticketId));
+
+    await recordAudit({
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.role,
+      action: "ticket_resolved",
+      entityType: "support",
+      entityId: ticketId,
+      summary: `Resolved support ticket ${ticket.ticketNumber}`,
+    });
+    return { ok: true, message: "Ticket marked as resolved." };
+  } catch (error) {
+    console.error("resolveSupportTicket:", error);
+    return { ok: false, error: "Could not resolve the ticket. Try again." };
+  }
+}
+
+/** Reopens a resolved ticket so it shows up in the open queue again. */
+export async function reopenSupportTicket(ticketId: string): Promise<ActionResult> {
+  const user = await requireStaff();
+
+  try {
+    const [ticket] = await db()
+      .select({ ticketNumber: supportTickets.ticketNumber })
+      .from(supportTickets)
+      .where(eq(supportTickets.id, ticketId))
+      .limit(1);
+    if (!ticket) return { ok: false, error: "Ticket not found." };
+
+    await db()
+      .update(supportTickets)
+      .set({ status: "open", handledById: null, handledAt: null, adminNote: null })
+      .where(eq(supportTickets.id, ticketId));
+
+    await recordAudit({
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.role,
+      action: "ticket_reopened",
+      entityType: "support",
+      entityId: ticketId,
+      summary: `Reopened support ticket ${ticket.ticketNumber}`,
+    });
+    return { ok: true, message: "Ticket reopened." };
+  } catch (error) {
+    console.error("reopenSupportTicket:", error);
+    return { ok: false, error: "Could not reopen the ticket. Try again." };
+  }
 }

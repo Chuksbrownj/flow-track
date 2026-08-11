@@ -6,6 +6,7 @@ import {
   GraduationCap,
   IdCard,
   LayoutDashboard,
+  LifeBuoy,
   ScrollText,
   Settings,
   UserCircle,
@@ -20,6 +21,7 @@ export const masterNavItems = [
   { href: "/schedule", label: "Training Schedule", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit log", icon: ScrollText },
+  { href: "/support", label: "Support", icon: LifeBuoy },
   { href: "/staff", label: "Staff", icon: UserCircle },
   { href: "/how-to-use", label: "How to Use", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -33,6 +35,7 @@ export const adminNavItems = [
   { href: "/schedule", label: "Training Schedule", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/audit", label: "Audit log", icon: ScrollText },
+  { href: "/support", label: "Support", icon: LifeBuoy },
   { href: "/how-to-use", label: "How to Use", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

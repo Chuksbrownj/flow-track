@@ -64,6 +64,13 @@
       "when": 1786372850358,
       "tag": "0008_dynamic_courses_suspend_support",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786408487350,
+      "tag": "0009_fixed_shadow_king",
+      "breakpoints": true
     }
   ]
 }

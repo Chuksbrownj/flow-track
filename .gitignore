@@ -34,6 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# private working notes — kept out of the public repo
+QA-ROUND2.md
+AGENTS.md
+CLAUDE.md
+tmp-gate.mts
+
 # vercel
 .vercel
 

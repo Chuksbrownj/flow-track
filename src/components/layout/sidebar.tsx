@@ -4,7 +4,14 @@ import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 import { useSidebar } from "./sidebar-context";
 
-export function Sidebar({ role }: { role: string }) {
+export function Sidebar({
+  role,
+  openTicketCount = 0,
+}: {
+  role: string;
+  /** Unresolved support tickets — shown as a badge on the Support nav item. */
+  openTicketCount?: number;
+}) {
   const { collapsed, collapse } = useSidebar();
 
   return (
@@ -18,7 +25,7 @@ export function Sidebar({ role }: { role: string }) {
         <Brand />
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        <SidebarNav role={role} onNavigate={collapse} />
+        <SidebarNav role={role} openTicketCount={openTicketCount} onNavigate={collapse} />
       </div>
     </aside>
   );

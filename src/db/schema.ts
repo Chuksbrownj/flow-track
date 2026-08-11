@@ -212,6 +212,11 @@ export const supportTickets = pgTable("support_tickets", {
   phone: text("phone"),
   registrationNumber: text("registration_number"),
   description: text("description").notNull(),
+  /** open | resolved */
+  status: text("status").notNull().default("open"),
+  handledById: uuid("handled_by_id").references(() => users.id, { onDelete: "set null" }),
+  handledAt: timestamp("handled_at", { withTimezone: true }),
+  adminNote: text("admin_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

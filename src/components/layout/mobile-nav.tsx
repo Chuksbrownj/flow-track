@@ -13,7 +13,14 @@ import {
 import { Brand } from "./brand";
 import { SidebarNav } from "./sidebar-nav";
 
-export function MobileNav({ role }: { role: string }) {
+export function MobileNav({
+  role,
+  openTicketCount = 0,
+}: {
+  role: string;
+  /** Unresolved support tickets — shown as a badge on the Support nav item. */
+  openTicketCount?: number;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -30,7 +37,7 @@ export function MobileNav({ role }: { role: string }) {
           </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-3">
-          <SidebarNav role={role} onNavigate={() => setOpen(false)} />
+          <SidebarNav role={role} openTicketCount={openTicketCount} onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>
