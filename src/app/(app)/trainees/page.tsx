@@ -35,6 +35,7 @@ export default async function TraineesPage() {
     status: trainee.status,
     createdAt: trainee.createdAt.toISOString(),
     hasDevice: !!trainee.deviceFingerprint,
+    userId: trainee.userId,
   }));
 
   return (

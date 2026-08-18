@@ -25,6 +25,8 @@ export type TraineeRow = {
   status: string;
   createdAt: string;
   hasDevice?: boolean;
+  /** Set when a sign-in account is linked to this trainee. */
+  userId?: string | null;
 };
 
 export function TraineeForm({
@@ -161,6 +163,35 @@ export function TraineeForm({
           <p className="text-xs text-muted-foreground">
             The trainee signs in with their registration number (or email) and this password.
           </p>
+        </>
+      ) : null}
+      {mode === "edit" && trainee && !trainee.userId ? (
+        <>
+          <div className="rounded-lg border border-dashed p-3">
+            <p className="text-sm font-medium">Set sign-in password</p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              This trainee has no login account yet. Set a password to create one — they sign in
+              with their registration number (or email) and this password.
+            </p>
+            <div className="space-y-2">
+              <PasswordInput
+                id="password"
+                name="password"
+                placeholder="New password (at least 8 characters)"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={128}
+              />
+              <PasswordInput
+                id="confirmPassword"
+                name="confirmPassword"
+                placeholder="Repeat password"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={128}
+              />
+            </div>
+          </div>
         </>
       ) : null}
       {mode === "edit" ? (

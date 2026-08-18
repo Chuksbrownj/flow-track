@@ -191,6 +191,53 @@ export async function updateTrainee(
     }
   }
 
+  // Optional: create a sign-in account for trainees that have none yet (e.g.
+  // they were added before accounts were required). The password field is only
+  // shown in the UI when the trainee has no linked account.
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  if (!existing.userId && password) {
+    if (password !== confirmPassword) {
+      return { ok: false, error: "Passwords do not match." };
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) return { ok: false, error: passwordError };
+
+    if (input.email) {
+      const [emailCollision] = await db()
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, input.email))
+        .limit(1);
+      if (emailCollision) {
+        return { ok: false, error: "This email is already in use by another account." };
+      }
+    }
+
+    try {
+      const [createdUser] = await db()
+        .insert(users)
+        .values({
+          name: input.fullName,
+          email: input.email || null,
+          passwordHash: await bcrypt.hash(password, 10),
+          role: "student",
+        })
+        .returning({ id: users.id });
+      await db()
+        .update(trainees)
+        .set({ userId: createdUser.id, updatedAt: new Date() })
+        .where(eq(trainees.id, id));
+    } catch {
+      return { ok: false, error: "Could not create the sign-in account. Try again." };
+    }
+  } else if (existing.userId && password) {
+    return {
+      ok: false,
+      error: "This trainee already has a sign-in account. Use the password reset in their details to change it.",
+    };
+  }
+
   try {
     await db()
       .update(trainees)
