@@ -77,6 +77,14 @@ Only a Master Admin can promote an Admin to Master Admin.
 - **Reports** — summaries with CSV export.
 - **Password reset** — by email (staff) or registration code + email on file (students). Staff can also reset a student's password from the Trainees module (fallback for students without an email).
 
+## Tests
+
+- `npm test` — unit tests (vitest). No database needed.
+- `npm run test:integration` — login rate-limit integration tests against a
+  real PostgreSQL database. Uses `DATABASE_URL` (loaded from `.env.local`) and
+  is skipped when it isn't set. Creates only uniquely-prefixed `rate_limits`
+  rows and deletes them afterwards.
+
 ## Deployment
 
 ### Environment variables

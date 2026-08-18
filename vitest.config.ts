@@ -16,5 +16,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Real-database tests run via `npm run test:integration` instead.
+    exclude: ["**/*.integration.test.ts"],
   },
 });
