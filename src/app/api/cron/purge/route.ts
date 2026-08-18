@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { purgeDeletedTrainees } from "@/lib/actions/trainees";
+import { purgeExpiredRateLimits } from "@/lib/rate-limit";
 
 /**
  * Daily maintenance job — see `vercel.json` (crons).
  *
  * Purges trainee records that were marked for deletion more than 1 week ago,
  * so deleted records are removed even when nobody opens the app. Attendance,
- * scores and submissions cascade off the trainee row automatically.
+ * scores and submissions cascade off the trainee row automatically. Also
+ * sweeps expired rate-limit counters so the table stays bounded.
  *
  * Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` on every cron
  * request. The endpoint refuses to run unless that header matches, so it can
@@ -21,8 +23,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const purged = await purgeDeletedTrainees();
-    return NextResponse.json({ ok: true, purged });
+    const [purged, purgedRateLimits] = await Promise.all([
+      purgeDeletedTrainees(),
+      purgeExpiredRateLimits(),
+    ]);
+    return NextResponse.json({ ok: true, purged, purgedRateLimits });
   } catch (error) {
     console.error("Cron purge failed:", error);
     return NextResponse.json({ ok: false, error: "Purge failed." }, { status: 500 });

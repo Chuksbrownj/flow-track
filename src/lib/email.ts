@@ -74,19 +74,24 @@ export async function sendSupportTicketConfirmation(to: string, ticketNumber: st
 export async function sendSuspendRequestNotice(
   to: string[],
   request: { traineeName: string; reason: string; requestedBy: string }
-) {
-  return sendEmail(
-    to[0] ?? "",
-    `Suspension request — ${request.traineeName}`,
-    [
-      "<div style=\"font-family: sans-serif; max-width: 480px; margin: 0 auto;\">",
-      `<h2 style="color: #0f172a;">Suspension request</h2>`,
-      `<p style="color: #334155;">${escapeHtml(request.requestedBy)} has requested to suspend <strong>${escapeHtml(request.traineeName)}</strong>.</p>`,
-      `<p style="color: #334155;"><strong>Reason:</strong> ${escapeHtml(request.reason)}</p>`,
-      `<p style="color: #64748b; font-size: 13px;">Sign in to the staff portal and open Trainees → pending suspension requests to approve or reject this request. The account stays active until a master admin confirms.</p>`,
-      "</div>",
-    ].join("")
+): Promise<boolean> {
+  if (to.length === 0) return false;
+
+  const subject = `Suspension request — ${request.traineeName}`;
+  const htmlContent = [
+    "<div style=\"font-family: sans-serif; max-width: 480px; margin: 0 auto;\">",
+    `<h2 style="color: #0f172a;">Suspension request</h2>`,
+    `<p style="color: #334155;">${escapeHtml(request.requestedBy)} has requested to suspend <strong>${escapeHtml(request.traineeName)}</strong>.</p>`,
+    `<p style="color: #334155;"><strong>Reason:</strong> ${escapeHtml(request.reason)}</p>`,
+    `<p style="color: #64748b; font-size: 13px;">Sign in to the staff portal and open Trainees → pending suspension requests to approve or reject this request. The account stays active until a master admin confirms.</p>`,
+    "</div>",
+  ].join("");
+
+  // One email per master admin — every recipient must be notified, not just the first.
+  const results = await Promise.all(
+    to.map((recipient) => sendEmail(recipient, subject, htmlContent))
   );
+  return results.every(Boolean);
 }
 
 export async function sendAccountCredentialsEmail(

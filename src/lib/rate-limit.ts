@@ -1,9 +1,16 @@
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { rateLimits } from "@/db/schema";
 
 export type RateLimitResult = { ok: boolean; retryAfterSeconds?: number };
+
+/**
+ * Chance that a rateLimit call also sweeps expired rows. Safety net for
+ * deployments where the daily cron is not configured — the cron sweep in
+ * `/api/cron/purge` remains the primary cleanup.
+ */
+const SWEEP_PROBABILITY = 0.01;
 
 /**
  * Simple DB-backed sliding-window rate limiter. Persistent across serverless
@@ -17,6 +24,17 @@ export async function rateLimit(
   limit: number,
   windowMs: number
 ): Promise<RateLimitResult> {
+  // Opportunistic hygiene: occasionally delete expired rows so the table stays
+  // bounded even without the cron. Errors are swallowed — a failed sweep must
+  // never break the rate-limit decision.
+  if (Math.random() < SWEEP_PROBABILITY) {
+    try {
+      await purgeExpiredRateLimits();
+    } catch (error) {
+      console.error("rateLimit: expired-row sweep failed", error);
+    }
+  }
+
   const now = Date.now();
 
   const [row] = await db()
@@ -37,6 +55,19 @@ export async function rateLimit(
     return { ok: false, retryAfterSeconds };
   }
   return { ok: true };
+}
+
+/**
+ * Deletes rate-limit rows whose window has fully expired. Safe to run any
+ * time — an expired key is simply re-created on its next use. Prevents the
+ * table from accumulating one row per unique key forever.
+ */
+export async function purgeExpiredRateLimits(): Promise<number> {
+  const deleted = await db()
+    .delete(rateLimits)
+    .where(lt(rateLimits.resetAt, new Date()))
+    .returning({ key: rateLimits.key });
+  return deleted.length;
 }
 
 /** Client IP as seen by the platform (Vercel sets X-Forwarded-For). */

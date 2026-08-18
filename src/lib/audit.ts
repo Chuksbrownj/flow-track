@@ -125,84 +125,62 @@ export async function listAuditLogs(opts: {
   }));
 }
 
-/** Human-readable label for an action/entity combination. */
+/**
+ * Human-readable labels, keyed by the typed union so TypeScript fails the
+ * build if a new action/entity is added without a label.
+ */
+const ENTITY_LABELS: Record<AuditEntityType, string> = {
+  trainee: "Trainee",
+  attendance: "Attendance",
+  score_sheet: "Score sheet",
+  schedule: "Schedule",
+  staff: "Staff",
+  exam: "Exam",
+  profile: "Profile",
+  auth: "Account",
+  course: "Course",
+  support: "Support ticket",
+};
+
+const ACTION_LABELS: Record<AuditAction, string> = {
+  created: "created",
+  updated: "updated",
+  deleted: "deleted",
+  approved: "approved",
+  status: "changed status",
+  device_reset: "reset device binding",
+  checkin: "checked in",
+  attendance_marked: "marked attendance",
+  attendance_confirmed: "confirmed attendance",
+  scores_saved: "saved scores",
+  exam_created: "created exam",
+  exam_updated: "updated exam",
+  exam_deleted: "deleted exam",
+  exam_opened: "opened exam",
+  exam_closed: "closed exam",
+  exam_reopened: "reopened exam",
+  exam_graded: "graded exam",
+  exam_override: "granted exam override",
+  password_reset: "reset password",
+  role_promoted: "promoted",
+  suspended: "suspended",
+  restored: "restored",
+  suspend_requested: "requested suspension",
+  suspend_confirmed: "confirmed suspension",
+  suspend_rejected: "rejected suspension request",
+  course_added: "added course",
+  ticket_resolved: "resolved",
+  ticket_reopened: "reopened",
+};
+
+/**
+ * Human-readable label for an action/entity combination. Unknown values
+ * (e.g. actions logged before this label set existed) fall back to the raw
+ * action/entity names.
+ */
 export function describeAudit(row: AuditLogRow): string {
-  const entity =
-    row.entityType === "trainee"
-      ? "Trainee"
-      : row.entityType === "attendance"
-        ? "Attendance"
-        : row.entityType === "score_sheet"
-          ? "Score sheet"
-          : row.entityType === "schedule"
-            ? "Schedule"
-            : row.entityType === "staff"
-              ? "Staff"
-              : row.entityType === "exam"
-                ? "Exam"
-                : row.entityType === "profile"
-                  ? "Profile"
-                  : row.entityType === "course"
-                    ? "Course"
-                    : row.entityType === "support"
-                      ? "Support ticket"
-                      : "Account";
-  const action =
-    row.action === "created"
-      ? "created"
-      : row.action === "updated"
-        ? "updated"
-        : row.action === "deleted"
-          ? "deleted"
-          : row.action === "approved"
-            ? "approved"
-            : row.action === "status"
-              ? "changed status"
-              : row.action === "device_reset"
-                ? "reset device binding"
-                : row.action === "checkin"
-                  ? "checked in"
-                  : row.action === "attendance_marked"
-                    ? "marked attendance"
-                    : row.action === "attendance_confirmed"
-                      ? "confirmed attendance"
-                      : row.action === "scores_saved"
-                        ? "saved scores"
-                        : row.action === "exam_created"
-                          ? "created exam"
-                          : row.action === "exam_updated"
-                            ? "updated exam"
-                            : row.action === "exam_deleted"
-                              ? "deleted exam"                                  : row.action === "exam_opened"
-                                    ? "opened exam"
-                                    : row.action === "exam_closed"
-                                      ? "closed exam"
-                                      : row.action === "exam_reopened"
-                                        ? "reopened exam"
-                                      : row.action === "exam_graded"
-                                        ? "graded exam"
-                                        : row.action === "exam_override"
-                                          ? "granted exam override"
-                                          : row.action === "password_reset"
-                                            ? "reset password"
-                                            : row.action === "role_promoted"
-                                              ? "promoted"
-                                              : row.action === "suspended"
-                                                ? "suspended"
-                                              : row.action === "restored"
-                                                ? "restored"
-                                              : row.action === "suspend_requested"
-                                                ? "requested suspension"
-                                              : row.action === "suspend_confirmed"
-                                                ? "confirmed suspension"
-                                              : row.action === "suspend_rejected"
-                                                ? "rejected suspension request"                : row.action === "course_added"
-                  ? "added course"
-                  : row.action === "ticket_resolved"
-                    ? "resolved"
-                    : row.action === "ticket_reopened"
-                      ? "reopened"
-                      : row.action;
+  const entity = ENTITY_LABELS[row.entityType as AuditEntityType] ?? "Account";
+  const action = ACTION_LABELS[row.action as AuditAction] ?? row.action;
   return `${entity} ${action}`;
 }
 
