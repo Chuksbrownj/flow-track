@@ -4,6 +4,8 @@ A simple training management system — students, attendance, weekly score sheet
 
 🔗 **Live:** https://flow-track-gilt.vercel.app
 
+[![CI](https://github.com/Chuksbrownj/flow-track/actions/workflows/ci.yml/badge.svg)](https://github.com/Chuksbrownj/flow-track/actions/workflows/ci.yml)
+
 ## Stack
 
 - Next.js + TypeScript
