@@ -19,7 +19,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 / npm 11 matches the toolchain that generates the lockfile.
+          # Node 22's bundled npm 10 re-resolves vite's peer esbuild differently
+          # and fails `npm ci` against an npm-11 lockfile.
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
