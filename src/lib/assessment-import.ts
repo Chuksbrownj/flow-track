@@ -2,10 +2,11 @@ import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 
 export type ImportedQuestion = {
-  type: "objective" | "written";
+  type: "objective" | "multiple" | "written";
   prompt: string;
   options: string[] | null;
   correctOption: number | null;
+  correctOptions: number[] | null;
   points: number;
 };
 
@@ -28,8 +29,10 @@ function rowLabel(index: number) {
  *
  * Expected columns (header row):
  *   type, question, optionA, optionB, optionC, optionD, correct, points
- * - type: objective | written
+ * - type: objective | multiple | written
  * - objective questions: options A–D and `correct` (A/B/C/D or 1-4) required
+ * - multiple questions: options A–D and `correct` with several letters
+ *   (e.g. "A,C") — auto-graded when the trainee picks exactly those
  * - written questions: only question + points
  */
 export async function parseQuestionFile(file: File): Promise<ImportResult> {
@@ -94,14 +97,16 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
         errors.push(`${label}: written question is missing the question text.`);
         return;
       }
-      questions.push({ type: "written", prompt, options: null, correctOption: null, points });
+      questions.push({ type: "written", prompt, options: null, correctOption: null, correctOptions: null, points });
       return;
     }
 
-    if (type !== "objective" && type !== "mcq") {
-      errors.push(`${label}: type must be "objective" or "written" (got "${type || "empty"}").`);
+    if (type !== "objective" && type !== "multiple" && type !== "mcq") {
+      errors.push(`${label}: type must be "objective", "multiple" or "written" (got "${type || "empty"}").`);
       return;
     }
+
+    const isMultiple = type === "multiple";
     if (!prompt) {
       errors.push(`${label}: objective question is missing the question text.`);
       return;
@@ -117,21 +122,47 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
 
     const correctRaw = str(row.correct).toLowerCase();
     let correctOption: number | null = null;
-    if (/^[a-f1-6]$/.test(correctRaw)) {
-      const byLetter = OPTION_LETTERS.indexOf(correctRaw);
-      const byNumber = Number(correctRaw) - 1;
-      correctOption = byLetter >= 0 ? byLetter : byNumber;
-    }
-    if (correctOption === null || correctOption < 0 || correctOption >= options.length) {
-      errors.push(`${label}: "correct" must be a letter (A–F) or number (1–6) matching one of the options.`);
-      return;
+    let correctOptions: number[] | null = null;
+
+    if (isMultiple) {
+      // Multiple correct answers: letters and/or numbers, e.g. "A,C" or "1,3".
+      const parts = correctRaw
+        .split(/[,;]+/)
+        .map((part) => part.trim())
+        .filter((part) => part !== "");
+      const indices = parts.map((part) => {
+        if (/^[a-f]$/.test(part)) return OPTION_LETTERS.indexOf(part);
+        if (/^[1-6]$/.test(part)) return Number(part) - 1;
+        return -1;
+      });
+      if (
+        indices.length < 2 ||
+        indices.some((index) => index < 0 || index >= options.length)
+      ) {
+        errors.push(
+          `${label}: "correct" must list at least two valid letters (A–F) or numbers (1–6), e.g. "A,C".`
+        );
+        return;
+      }
+      correctOptions = [...new Set(indices)].sort();
+    } else {
+      if (/^[a-f1-6]$/.test(correctRaw)) {
+        const byLetter = OPTION_LETTERS.indexOf(correctRaw);
+        const byNumber = Number(correctRaw) - 1;
+        correctOption = byLetter >= 0 ? byLetter : byNumber;
+      }
+      if (correctOption === null || correctOption < 0 || correctOption >= options.length) {
+        errors.push(`${label}: "correct" must be a letter (A–F) or number (1–6) matching one of the options.`);
+        return;
+      }
     }
 
     questions.push({
-      type: "objective",
+      type: isMultiple ? "multiple" : "objective",
       prompt,
       options,
       correctOption,
+      correctOptions,
       points,
     });
   });
@@ -255,10 +286,11 @@ async function parseDocxQuestions(file: File): Promise<ImportResult> {
         prompt,
         options: optionLines.map((option) => option.text),
         correctOption,
+        correctOptions: null,
         points,
       });
     } else {
-      questions.push({ type: "written", prompt, options: null, correctOption: null, points });
+      questions.push({ type: "written", prompt, options: null, correctOption: null, correctOptions: null, points });
     }
   });
 
@@ -271,7 +303,7 @@ export function questionTemplateCsv(): string {
   const header = ["type", "question", "optionA", "optionB", "optionC", "optionD", "correct", "points"];
   const examples = [
     ["objective", "Which colour model is used for print?", "RGB", "CMYK", "HSV", "HSL", "B", "2"],
-    ["objective", "In 2D animation, what does 'tweening' mean?", "Frames in between", "Outlining", "Colouring", "Rendering", "A", "2"],
+    ["multiple", "Which of these are primary colours?", "Red", "Green", "Blue", "Yellow", "A,C", "2"],
     ["written", "Explain how a stacked bar chart differs from a grouped bar chart.", "", "", "", "", "", "5"],
   ];
   const escape = (value: string) => {

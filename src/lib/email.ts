@@ -94,6 +94,26 @@ export async function sendSuspendRequestNotice(
   return results.every(Boolean);
 }
 
+export async function sendExamAvailableEmail(
+  to: string,
+  examTitle: string,
+  topic: string
+) {
+  return sendEmail(
+    to,
+    `New exam available: ${examTitle}`,
+    [
+      "<div style=\"font-family: sans-serif; max-width: 480px; margin: 0 auto;\">",
+      "<h2 style=\"color: #0f172a;\">A new exam is available</h2>",
+      `<p style="color: #334155;"><strong>${escapeHtml(examTitle)}</strong> (${escapeHtml(topic)}) has been opened by your trainer.</p>`,
+      "<p style=\"color: #334155;\">Sign in and open the Assessments page to take it before the closing time.</p>",
+      `<p><a href="${process.env.APP_URL ?? "https://flow-track-gilt.vercel.app"}/assessments" style="display:inline-block;background:#16a34a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Open assessments</a></p>`,
+      "<p style=\"color: #64748b; font-size: 13px;\">Exams run in full-screen mode and close automatically when time runs out.</p>",
+      "</div>",
+    ].join("")
+  );
+}
+
 export async function sendAccountCredentialsEmail(
   to: string,
   name: string,

@@ -97,6 +97,7 @@ describe("parseQuestionFile — CSV", () => {
         prompt: "Which colour model is used for print?",
         options: ["RGB", "CMYK", "HSV", "HSL"],
         correctOption: 1, // B
+        correctOptions: null,
         points: 2,
       },
       {
@@ -104,9 +105,49 @@ describe("parseQuestionFile — CSV", () => {
         prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
         options: null,
         correctOption: null,
+        correctOptions: null,
         points: 5,
       },
     ]);
+  });
+
+  it("parses multiple-answer questions (correct lists several letters)", async () => {
+    const content = [
+      HEADER,
+      // The correct column holds a comma, so it must be quoted (as the template does).
+      'multiple,"Which of these are primary colours?",Red,Green,Blue,Yellow,"A,C",2',
+    ].join("\n");
+
+    const result = await parseQuestionFile(csvFile(content));
+
+    expect(result.ok).toBe(true);
+    expect(result.questions).toEqual([
+      {
+        type: "multiple",
+        prompt: "Which of these are primary colours?",
+        options: ["Red", "Green", "Blue", "Yellow"],
+        correctOption: null,
+        correctOptions: [0, 2], // A, C
+        points: 2,
+      },
+    ]);
+  });
+
+  it("accepts numeric lists and mixed separators for multiple-answer correct", async () => {
+    const content = [
+      HEADER,
+      "multiple,Which?,Alpha,Beta,Gamma,,1;3,1",
+    ].join("\n");
+    const result = await parseQuestionFile(csvFile(content));
+    expect(result.ok).toBe(true);
+    expect(result.questions?.[0].correctOptions).toEqual([0, 2]);
+  });
+
+  it("rejects multiple-answer correct with fewer than two valid letters", async () => {
+    const content = [HEADER, "multiple,Which?,A,B,,,A,1"].join("\n");
+    const result = await parseQuestionFile(csvFile(content));
+    expect(result.ok).toBe(false);
+    expect(result.errors?.[0]).toContain('"correct" must list at least two valid letters');
   });
 
   it("handles quoted values containing commas", async () => {
@@ -156,7 +197,7 @@ describe("parseQuestionFile — CSV", () => {
     const result = await parseQuestionFile(csvFile(content));
     expect(result).toEqual({
       ok: false,
-      errors: ['Row 2: type must be "objective" or "written" (got "essay").'],
+      errors: ['Row 2: type must be "objective", "multiple" or "written" (got "essay").'],
     });
   });
 
@@ -249,6 +290,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         prompt: "What colour model is used for print?",
         options: ["RGB", "CMYK", "HSV", "HSL"],
         correctOption: 1,
+        correctOptions: null,
         points: 2,
       },
       {
@@ -256,6 +298,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
         options: null,
         correctOption: null,
+        correctOptions: null,
         points: 1, // default when no Points line
       },
     ]);
@@ -284,6 +327,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         prompt: "What colour model is used for print?",
         options: ["RGB", "CMYK", "HSV", "HSL"],
         correctOption: 1,
+        correctOptions: null,
         points: 2,
       },
       {
@@ -291,6 +335,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
         options: null,
         correctOption: null,
+        correctOptions: null,
         points: 1,
       },
     ]);
@@ -349,14 +394,14 @@ describe("questionTemplateCsv", () => {
     expect(lines[0]).toBe(HEADER);
   });
 
-  it("includes the example rows (one objective, one written, one animation)", () => {
+  it("includes the example rows (objective, multiple, written)", () => {
     const lines = questionTemplateCsv().split("\n");
     expect(lines).toHaveLength(4);
     expect(lines[1]).toBe(
       "objective,Which colour model is used for print?,RGB,CMYK,HSV,HSL,B,2"
     );
     expect(lines[2]).toBe(
-      'objective,"In 2D animation, what does \'tweening\' mean?",Frames in between,Outlining,Colouring,Rendering,A,2'
+      'multiple,Which of these are primary colours?,Red,Green,Blue,Yellow,"A,C",2'
     );
     expect(lines[3]).toBe(
       "written,Explain how a stacked bar chart differs from a grouped bar chart.,,,,,,5"

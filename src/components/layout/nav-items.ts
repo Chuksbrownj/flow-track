@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarDays,
   ClipboardCheck,
+  Bell,
   GraduationCap,
   IdCard,
   LayoutDashboard,
@@ -45,5 +46,6 @@ export const traineeNavItems = [
   { href: "/attendance", label: "Attendance", icon: ClipboardCheck },
   { href: "/schedule", label: "Training Schedule", icon: CalendarDays },
   { href: "/assessments", label: "Assessments", icon: GraduationCap },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/profile", label: "Profile", icon: IdCard },
 ];

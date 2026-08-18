@@ -112,6 +112,8 @@ export const exams = pgTable("assessment_exams", {
   opensAt: timestamp("opens_at", { withTimezone: true }),
   closesAt: timestamp("closes_at", { withTimezone: true }),
   createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  /** Soft-delete marker — grades/submissions stay intact when an exam is removed. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -121,12 +123,18 @@ export const examQuestions = pgTable("assessment_questions", {
   examId: uuid("exam_id")
     .notNull()
     .references(() => exams.id, { onDelete: "cascade" }),
+  /** objective | multiple | written */
   type: text("type").notNull(),
   prompt: text("prompt").notNull(),
   options: text("options"),
+  /** Single correct option index for objective questions. */
   correctOption: integer("correct_option"),
+  /** JSON array of correct option indices for multiple-answer questions. */
+  correctOptions: text("correct_options"),
   points: integer("points").notNull().default(1),
   order: integer("order").notNull().default(0),
+  /** Soft-delete marker — historical grades stay intact when a question is removed. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const examSubmissions = pgTable(
@@ -149,6 +157,8 @@ export const examSubmissions = pgTable(
     totalPoints: integer("total_points").notNull().default(0),
     writtenScore: integer("written_score"),
     writtenGrades: text("written_grades"),
+    /** JSON of {questionId: score} suggested by the LLM for written questions. */
+    llmGrades: text("llm_grades"),
     gradedById: uuid("graded_by_id").references(() => users.id, { onDelete: "set null" }),
     gradedAt: timestamp("graded_at", { withTimezone: true }),
     overriddenAt: timestamp("overridden_at", { withTimezone: true }),
@@ -156,6 +166,19 @@ export const examSubmissions = pgTable(
   },
   (t) => [uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId)]
 );
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body"),
+  /** Internal link the notification points to (e.g. /assessments). */
+  link: text("link"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const traineeChangeLogs = pgTable("trainee_change_logs", {
   id: uuid("id").defaultRandom().primaryKey(),

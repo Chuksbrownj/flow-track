@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Clock3,
@@ -17,6 +16,16 @@ import { recordViolation, saveAnswer, submitExam, type ExamSession } from "@/lib
 
 const MAX_VIOLATIONS = 3;
 const VIOLATION_COOLDOWN_MS = 2000;
+
+function parseSelected(value: string | undefined): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed.filter(Number.isInteger) as number[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 function formatClock(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -118,6 +127,23 @@ export function ExamPlayer({
     scheduleSave(next, index);
   }
 
+  /** Toggles one option of a multiple-answer question (stored as a JSON array). */
+  function toggleOption(questionId: string, optionIndex: number) {
+    if (finished) return;
+    let selected: number[] = [];
+    try {
+      selected = JSON.parse(answersRef.current[questionId] ?? "[]") as number[];
+    } catch {
+      selected = [];
+    }
+    const next = selected.includes(optionIndex)
+      ? selected.filter((value) => value !== optionIndex)
+      : [...selected, optionIndex];
+    const nextAnswers = { ...answersRef.current, [questionId]: JSON.stringify(next) };
+    setAnswers(nextAnswers);
+    scheduleSave(nextAnswers, index);
+  }
+
   function goNext() {
     if (finished || !currentAnswered) return;
     const nextIndex = Math.min(index + 1, session.questions.length - 1);
@@ -181,32 +207,28 @@ export function ExamPlayer({
       <div className="mx-auto max-w-md space-y-6 py-8">
         <div className="flex flex-col items-center gap-3 rounded-2xl border bg-card p-8 text-center shadow-sm">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-            {grade && (grade.percent ?? 0) >= 50 ? (
-              <CheckCircle2 className="h-7 w-7" />
-            ) : (
-              <AlertTriangle className="h-7 w-7" />
-            )}
+            <CheckCircle2 className="h-7 w-7" />
           </div>
           <h2 className="text-xl font-semibold tracking-tight">{session.title}</h2>
-          <p className="text-sm text-muted-foreground">
-            {grade?.graded ? "Final grade (including written answers)" : "Your submitted score"}
-          </p>
-          {grade ? (
+          {grade?.graded ? (
             <>
+              <p className="text-sm text-muted-foreground">Your final grade</p>
               <p className="text-4xl font-bold tracking-tight">
                 {grade.percent !== null ? `${grade.percent}%` : "—"}
               </p>
               <p className="text-sm text-muted-foreground">
                 {grade.autoScore + (grade.writtenScore ?? 0)} / {grade.totalPoints} points
               </p>
-              {!grade.graded ? (
-                <p className="text-xs text-muted-foreground">
-                  Written questions are graded by your trainer. Your final grade will appear here
-                  once marked.
-                </p>
-              ) : null}
             </>
-          ) : null}
+          ) : (
+            <>
+              <p className="text-base font-semibold">Submitted Successfully, Await Grading</p>
+              <p className="text-sm text-muted-foreground">
+                Your answers have been submitted. The final grade will appear here once your
+                trainer finishes grading.
+              </p>
+            </>
+          )}
           <Button className="mt-2" onClick={onDone}>
             Back to exams
           </Button>
@@ -220,8 +242,17 @@ export function ExamPlayer({
   const currentAnswered = question
     ? question.type === "objective"
       ? answers[question.id] !== undefined
-      : (answers[question.id] ?? "").trim() !== ""
+      : question.type === "multiple"
+        ? (() => {
+            try {
+              return (JSON.parse(answers[question.id] ?? "[]") as number[]).length > 0;
+            } catch {
+              return false;
+            }
+          })()
+        : (answers[question.id] ?? "").trim() !== ""
     : false;
+  const selectedOptions = question?.type === "multiple" ? parseSelected(answers[question.id]) : [];
   const lowTime = remainingMs < 5 * 60_000;
 
   return (
@@ -263,15 +294,22 @@ export function ExamPlayer({
           <span className="ml-1 text-xs text-muted-foreground">({question?.points} pt{question && question.points !== 1 ? "s" : ""})</span>
         </p>
 
-        {question?.type === "objective" && question.options ? (
+        {question?.options && (question.type === "objective" || question.type === "multiple") ? (
           <div className="mt-4 space-y-2">
             {question.options.map((option, optionIndex) => {
-              const selected = answers[question.id] === String(optionIndex);
+              const selected =
+                question.type === "multiple"
+                  ? selectedOptions.includes(optionIndex)
+                  : answers[question.id] === String(optionIndex);
               return (
                 <button
                   key={optionIndex}
                   type="button"
-                  onClick={() => setAnswer(question.id, String(optionIndex))}
+                  onClick={() =>
+                    question.type === "multiple"
+                      ? toggleOption(question.id, optionIndex)
+                      : setAnswer(question.id, String(optionIndex))
+                  }
                   className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors ${
                     selected
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
@@ -289,6 +327,11 @@ export function ExamPlayer({
                 </button>
               );
             })}
+            {question.type === "multiple" ? (
+              <p className="pt-1 text-xs text-muted-foreground">
+                Select all answers that apply.
+              </p>
+            ) : null}
           </div>
         ) : (
           <Textarea
@@ -319,6 +362,11 @@ export function ExamPlayer({
             <ArrowRight className="h-4 w-4" />
           </Button>
         )}
+        {question?.type === "multiple" ? (
+          <p className="mt-1 text-right text-[11px] text-muted-foreground">
+            Multiple answers — select every option you think is correct.
+          </p>
+        ) : null}
       </div>
     </div>
   );

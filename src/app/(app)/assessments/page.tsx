@@ -1,4 +1,4 @@
-import { asc, count, desc, eq, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, ne } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import {
@@ -47,11 +47,23 @@ export default async function AssessmentsPage({
       );
     }
 
-    const [examRows, submissionRows] = await Promise.all([
-      database.select().from(exams).orderBy(desc(exams.createdAt)),
+    const [examRows, submissionRows, questionTypeRows] = await Promise.all([
+      database
+        .select()
+        .from(exams)
+        .where(isNull(exams.deletedAt))
+        .orderBy(desc(exams.createdAt)),
       database.select().from(examSubmissions).where(eq(examSubmissions.traineeId, trainee.id)),
+      database
+        .select({ examId: examQuestions.examId, type: examQuestions.type })
+        .from(examQuestions)
+        .where(isNull(examQuestions.deletedAt)),
     ]);
     const now = new Date();
+    const hasWrittenByExam = new Map<string, boolean>();
+    for (const row of questionTypeRows) {
+      if (row.type === "written") hasWrittenByExam.set(row.examId, true);
+    }
 
     const list: TraineeExamRow[] = examRows
       .filter(
@@ -81,6 +93,12 @@ export default async function AssessmentsPage({
                 autoScore: submission.autoScore,
                 writtenScore: submission.writtenScore,
                 totalPoints: submission.totalPoints,
+                // FEAT-05: a submission is only "graded" once the full exam has
+                // been graded (auto + reviewed written answers).
+                graded:
+                  submission.status === "graded" ||
+                  (submission.status === "submitted" &&
+                    !hasWrittenByExam.get(exam.id)),
               }
             : null,
         };
@@ -105,26 +123,46 @@ export default async function AssessmentsPage({
   const isAdmin = user.role === "master_admin";
   const examWhere = isAdmin ? undefined : eq(exams.createdById, staffId);
 
-  const [examRows, questionCountRows, submissionRows, traineeRows, staffRows, writtenRows, courseList] =
+  const [examRows, questionCountRows, questionRows, submissionRows, traineeRows, staffRows, writtenRows, courseList] =
     await Promise.all([
       examWhere
-        ? database.select().from(exams).where(examWhere).orderBy(desc(exams.createdAt))
-        : database.select().from(exams).orderBy(desc(exams.createdAt)),
+        ? database
+            .select()
+            .from(exams)
+            .where(and(examWhere, isNull(exams.deletedAt)))
+            .orderBy(desc(exams.createdAt))
+        : database
+            .select()
+            .from(exams)
+            .where(isNull(exams.deletedAt))
+            .orderBy(desc(exams.createdAt)),
       database
         .select({ examId: examQuestions.examId, value: count() })
         .from(examQuestions)
+        .where(isNull(examQuestions.deletedAt))
         .groupBy(examQuestions.examId),
+      database
+        .select()
+        .from(examQuestions)
+        .where(isNull(examQuestions.deletedAt))
+        .orderBy(asc(examQuestions.order)),
       database.select().from(examSubmissions),
       database.select({ id: trainees.id, fullName: trainees.fullName, registrationNumber: trainees.registrationNumber }).from(trainees),
       database.select({ id: users.id, name: users.name }).from(users),
       database
         .select()
         .from(examQuestions)
-        .where(eq(examQuestions.type, "written")),
+        .where(and(eq(examQuestions.type, "written"), isNull(examQuestions.deletedAt))),
       listCourses(),
     ]);
 
   const questionCountByExam = new Map(questionCountRows.map((row) => [row.examId, row.value]));
+  const questionsByExam = new Map<string, typeof questionRows>();
+  for (const row of questionRows) {
+    const list = questionsByExam.get(row.examId) ?? [];
+    list.push(row);
+    questionsByExam.set(row.examId, list);
+  }
   const traineeName = new Map(traineeRows.map((row) => [row.id, row]));
   const staffName = new Map(staffRows.map((row) => [row.id, row.name]));
   const writtenByExam = new Map<string, typeof writtenRows>();
@@ -159,6 +197,9 @@ export default async function AssessmentsPage({
           fullscreenViolations: submission.fullscreenViolations,
           submittedAt: submission.submittedAt?.toISOString() ?? null,
           writtenQuestions: written,
+          llmGrades: submission.llmGrades
+            ? (JSON.parse(submission.llmGrades) as Record<string, number>)
+            : null,
         };
       });
 
@@ -173,6 +214,13 @@ export default async function AssessmentsPage({
       closesAt: exam.closesAt?.toISOString() ?? null,
       createdBy: exam.createdById ? staffName.get(exam.createdById) ?? null : null,
       questionCount: questionCountByExam.get(exam.id) ?? 0,
+      questions: (questionsByExam.get(exam.id) ?? []).map((question) => ({
+        id: question.id,
+        type: question.type as "objective" | "multiple" | "written",
+        prompt: question.prompt,
+        options: question.options ? (JSON.parse(question.options) as string[]) : null,
+        points: question.points,
+      })),
       submissions,
     };
   });

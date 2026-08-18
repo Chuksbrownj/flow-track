@@ -31,6 +31,8 @@ export type TraineeExamRow = {
     autoScore: number | null;
     writtenScore: number | null;
     totalPoints: number;
+    /** True when the whole submission has been graded (auto + reviewed written). */
+    graded: boolean;
   } | null;
 };
 
@@ -86,15 +88,17 @@ export function TraineeExams({ exams }: { exams: TraineeExamRow[] }) {
       {exams.map((exam) => {
         const submission = exam.submission;
         const hasResult = submission?.status === "submitted" || submission?.status === "graded";
-        const percent = hasResult
-          ? submission!.totalPoints > 0
-            ? Math.round(
-                ((submission!.autoScore ?? 0) + (submission!.writtenScore ?? 0)) /
-                  submission!.totalPoints *
-                  100
-              )
-            : null
-          : null;
+        const percent =
+          hasResult && submission!.graded
+            ? submission!.totalPoints > 0
+              ? Math.round(
+                  ((submission!.autoScore ?? 0) + (submission!.writtenScore ?? 0)) /
+                    submission!.totalPoints *
+                    100
+                )
+              : null
+            : null;
+        const awaitingGrading = hasResult && !submission!.graded;
         const busy = pendingId === exam.id;
 
         return (
@@ -126,10 +130,14 @@ export function TraineeExams({ exams }: { exams: TraineeExamRow[] }) {
                     <>
                       {percent !== null ? (
                         <Badge variant={percent >= 50 ? "default" : "destructive"}>{percent}%</Badge>
+                      ) : awaitingGrading ? (
+                        <Badge variant="outline" className="border-gold/40 bg-gold/10 text-gold-foreground">
+                          Awaiting grading
+                        </Badge>
                       ) : null}
                       <Button size="sm" className="gap-1.5" onClick={() => open(exam.id)}>
                         <GraduationCap className="h-4 w-4" />
-                        View result
+                        {awaitingGrading ? "View submission" : "View result"}
                       </Button>
                     </>
                   ) : exam.takeable ? (

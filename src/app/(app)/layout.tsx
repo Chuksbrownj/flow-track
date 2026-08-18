@@ -7,6 +7,8 @@ import { SidebarToggle } from "@/components/layout/sidebar-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { countOpenSupportTickets } from "@/lib/actions/support";
+import { countUnreadNotifications } from "@/lib/actions/notifications";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -21,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const isStaff = role === "master_admin" || role === "admin";
   const openTicketCount = isStaff ? await countOpenSupportTickets() : 0;
+  const unreadNotifications = role === "student" ? await countUnreadNotifications() : 0;
 
   return (
     <SidebarProvider>
@@ -31,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <MobileNav role={role} openTicketCount={openTicketCount} />
             <SidebarToggle role={role} />
             <div className="ml-auto flex items-center gap-2 md:gap-3">
+              {role === "student" ? <NotificationBell count={unreadNotifications} /> : null}
               <ThemeToggle />
               <UserMenu name={displayName} email={session.user.email ?? ""} />
             </div>

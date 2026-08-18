@@ -65,6 +65,7 @@ import {
   closeExam,
   createExam,
   deleteExam,
+  deleteExamQuestion,
   gradeWritten,
   importQuestions,
   openExam,
@@ -85,6 +86,16 @@ export type SubmissionRow = {
   fullscreenViolations: number;
   submittedAt: string | null;
   writtenQuestions: { id: string; prompt: string; points: number; answer: string }[];
+  /** {questionId: score} suggested by the LLM, for the review queue. */
+  llmGrades: Record<string, number> | null;
+};
+
+export type QuestionRow = {
+  id: string;
+  type: "objective" | "multiple" | "written";
+  prompt: string;
+  options: string[] | null;
+  points: number;
 };
 
 export type ExamListItem = {
@@ -98,6 +109,7 @@ export type ExamListItem = {
   closesAt: string | null;
   createdBy: string | null;
   questionCount: number;
+  questions: QuestionRow[];
   submissions: SubmissionRow[];
 };
 
@@ -136,6 +148,10 @@ export function ExamsClient({
   const [editTarget, setEditTarget] = useState<ExamListItem | null>(null);
   const [gradeTarget, setGradeTarget] = useState<{ submission: SubmissionRow; exam: ExamListItem } | null>(null);
   const [addQuestionTarget, setAddQuestionTarget] = useState<ExamListItem | null>(null);
+  const [deleteQuestionTarget, setDeleteQuestionTarget] = useState<{
+    exam: ExamListItem;
+    question: QuestionRow;
+  } | null>(null);
   const [closeTarget, setCloseTarget] = useState<ExamListItem | null>(null);
   const [reopenTarget, setReopenTarget] = useState<ExamListItem | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -272,28 +288,6 @@ export function ExamsClient({
                             <Pencil className="h-4 w-4" />
                             Edit
                           </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" className="gap-1.5 text-destructive">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete exam?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  &quot;{exam.title}&quot; and all its questions will be removed. This cannot be
-                                  undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction variant="destructive" onClick={() => run(exam.id, () => deleteExam(exam.id))}>
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
                         </>
                       ) : exam.status === "open" ? (
                         <Button
@@ -325,11 +319,90 @@ export function ExamsClient({
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                         Results ({exam.submissions.length})
                       </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-destructive"
+                            title="Delete exam"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete exam?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              &quot;{exam.title}&quot; will be removed from the list. Its questions are hidden
+                              from future use, but {exam.submissions.length > 0
+                                ? "its submissions and grades stay intact for reporting"
+                                : "any submissions and grades stay intact for reporting"}. This cannot
+                              be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => run(exam.id, () => deleteExam(exam.id))}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 </CardHeader>
                 {expanded ? (
-                  <CardContent>
+                  <CardContent className="space-y-5">
+                    {exam.questions.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Questions ({exam.questions.length})
+                        </p>
+                        <ul className="divide-y rounded-lg border">
+                          {exam.questions.map((question, qIndex) => (
+                            <li
+                              key={question.id}
+                              className="flex items-start justify-between gap-3 px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm">
+                                  <span className="text-muted-foreground">{qIndex + 1}.</span>{" "}
+                                  {question.prompt}
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {question.type === "written"
+                                    ? "Written"
+                                    : question.type === "multiple"
+                                      ? "Multiple answer"
+                                      : "Objective"}
+                                  {" · "}
+                                  {question.points} pt{question.points === 1 ? "" : "s"}
+                                </p>
+                              </div>
+                              {canEdit ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0 text-destructive"
+                                  title="Delete question"
+                                  onClick={() => setDeleteQuestionTarget({ exam, question })}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Submissions ({exam.submissions.length})
+                      </p>
                     {exam.submissions.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No submissions yet.</p>
                     ) : (
@@ -400,6 +473,7 @@ export function ExamsClient({
                         })}
                       </ul>
                     )}
+                    </div>
                   </CardContent>
                 ) : null}
               </Card>
@@ -459,13 +533,54 @@ export function ExamsClient({
             <AddQuestionForm
               key={addQuestionTarget.id}
               exam={addQuestionTarget}
-              onSubmit={(formData) =>
-                run(addQuestionTarget.id, () => addExamQuestion(addQuestionTarget.id, formData))
-              }
+              onSubmit={(formData) => {
+                setPendingId(addQuestionTarget.id);
+                startTransition(async () => {
+                  const result = await addExamQuestion(addQuestionTarget.id, formData);
+                  setPendingId(null);
+                  if (result.ok) {
+                    toast.success(result.message ?? "Question added.");
+                    // FEAT-01: close the dialog so the trainer can immediately add another.
+                    setAddQuestionTarget(null);
+                    router.refresh();
+                  } else {
+                    toast.error(result.error ?? "Something went wrong.");
+                  }
+                });
+              }}
             />
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={deleteQuestionTarget !== null}
+        onOpenChange={(open) => !open && setDeleteQuestionTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{deleteQuestionTarget?.question.prompt.slice(0, 80)}…&quot; will be removed from the
+              exam. Grades already recorded for this question stay intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!deleteQuestionTarget) return;
+                const { exam, question } = deleteQuestionTarget;
+                setDeleteQuestionTarget(null);
+                run(exam.id, () => deleteExamQuestion(exam.id, question.id));
+              }}
+            >
+              Delete question
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={closeTarget !== null} onOpenChange={(open) => !open && setCloseTarget(null)}>
         <AlertDialogContent>
@@ -644,12 +759,22 @@ function AddQuestionForm({
   exam: ExamListItem;
   onSubmit: (formData: FormData) => void;
 }) {
-  const [type, setType] = useState<"objective" | "written">("objective");
+  const [type, setType] = useState<"objective" | "multiple" | "written">("objective");
   const [correct, setCorrect] = useState("0");
+  const [correctMulti, setCorrectMulti] = useState<Set<number>>(new Set());
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(new FormData(event.currentTarget));
+  }
+
+  function toggleCorrectMulti(index: number) {
+    setCorrectMulti((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   }
 
   return (
@@ -660,20 +785,21 @@ function AddQuestionForm({
           Add question to &quot;{exam.title}&quot;
         </DialogTitle>
         <DialogDescription>
-          Build questions one at a time. Save and add another, or close this dialog when done.
+          Build questions one at a time. The window closes after saving so you can add the next one.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-2">
         <Label>Type</Label>
         <Select
           value={type}
-          onValueChange={(value) => setType(value as "objective" | "written")}
+          onValueChange={(value) => setType(value as "objective" | "multiple" | "written")}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="objective">Multiple choice (objective)</SelectItem>
+            <SelectItem value="objective">Multiple choice (one answer)</SelectItem>
+            <SelectItem value="multiple">Multiple choice (several answers)</SelectItem>
             <SelectItem value="written">Written</SelectItem>
           </SelectContent>
         </Select>
@@ -683,7 +809,7 @@ function AddQuestionForm({
         <Label htmlFor="question-prompt">Question</Label>
         <Textarea id="question-prompt" name="prompt" rows={2} required placeholder="Enter the question text" />
       </div>
-      {type === "objective" ? (
+      {type === "objective" || type === "multiple" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {[0, 1, 2, 3].map((index) => (
             <div key={index} className="space-y-2">
@@ -709,6 +835,34 @@ function AddQuestionForm({
               </SelectContent>
             </Select>
             <input type="hidden" name="correctOption" value={correct} />
+          </div>
+        ) : type === "multiple" ? (
+          <div className="space-y-2">
+            <Label>Correct options</Label>
+            <div className="flex flex-wrap gap-2">
+              {[0, 1, 2, 3].map((index) => (
+                <label
+                  key={index}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                    correctMulti.has(index)
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "hover:bg-muted/60"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    name={`correctOption${index}`}
+                    checked={correctMulti.has(index)}
+                    onChange={() => toggleCorrectMulti(index)}
+                  />
+                  {String.fromCharCode(65 + index)}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Select every option that counts as correct. The trainee must pick exactly these.
+            </p>
           </div>
         ) : null}
         <div className="space-y-2">
@@ -797,9 +951,21 @@ function GradeWrittenForm({
   submission: SubmissionRow;
   onSubmit: (grades: Record<string, number>) => void;
 }) {
+  // FEAT-06: prefill with the LLM's suggested scores when available — the
+  // trainer reviews each one and can keep or override it before saving.
   const [grades, setGrades] = useState<Record<string, string>>(() =>
-    Object.fromEntries(submission.writtenQuestions.map((question) => [question.id, ""]))
+    Object.fromEntries(
+      submission.writtenQuestions.map((question) => [
+        question.id,
+        submission.llmGrades?.[question.id] !== undefined
+          ? String(submission.llmGrades[question.id])
+          : "",
+      ])
+    )
   );
+
+  const hasLlmSuggestions = submission.llmGrades !== null &&
+    Object.keys(submission.llmGrades ?? {}).length > 0;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -826,8 +992,16 @@ function GradeWrittenForm({
           {exam.title} — {submission.traineeName}. Objective score: {submission.autoScore ?? 0}/{submission.totalPoints}.
         </DialogDescription>
       </DialogHeader>
+      {hasLlmSuggestions ? (
+        <p className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-gold-foreground">
+          AI suggested grades are pre-filled below. Review each answer and adjust the score
+          before saving — only the grade you save is shown to the trainee.
+        </p>
+      ) : null}
       <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
-        {submission.writtenQuestions.map((question, index) => (
+        {submission.writtenQuestions.map((question, index) => {
+          const suggested = submission.llmGrades?.[question.id];
+          return (
           <div key={question.id} className="space-y-2 rounded-lg border p-3">
             <p className="text-sm font-medium">
               {index + 1}. {question.prompt}
@@ -836,7 +1010,7 @@ function GradeWrittenForm({
             <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-2 text-sm">
               {question.answer || "No answer given."}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Label htmlFor={`grade-${question.id}`} className="shrink-0 text-xs text-muted-foreground">
                 Score
               </Label>
@@ -852,9 +1026,15 @@ function GradeWrittenForm({
                 className="w-24"
               />
               <span className="text-xs text-muted-foreground">/ {question.points}</span>
+              {suggested !== undefined ? (
+                <span className="text-[11px] text-muted-foreground">
+                  AI suggested {suggested}
+                </span>
+              ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <DialogFooter showCloseButton={false}>
         <Button type="submit">Save grades</Button>

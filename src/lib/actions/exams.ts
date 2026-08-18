@@ -1,20 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, max, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { examQuestions, exams, examSubmissions, trainees } from "@/db/schema";
+import { examQuestions, exams, examSubmissions, notifications, trainees, users } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { isValidCourse } from "@/lib/courses";
 import { parseQuestionFile } from "@/lib/assessment-import";
 import { isUuid } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
+import { sanitizeLlmGrades, suggestWrittenGrades } from "@/lib/llm-grading";
+import { sendExamAvailableEmail } from "@/lib/email";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
 export type PlayerQuestion = {
   id: string;
-  type: "objective" | "written";
+  type: "objective" | "multiple" | "written";
   prompt: string;
   options: string[] | null;
   points: number;
@@ -25,6 +27,7 @@ export type ExamResult = {
   totalPoints: number;
   writtenScore: number | null;
   percent: number | null;
+  /** True when the full submission has been graded (auto + reviewed written). */
   graded: boolean;
 };
 
@@ -64,7 +67,11 @@ async function canManageExam(
   staff: { id: string; role: string },
   requireDraft = false
 ) {
-  const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
+  const [exam] = await db()
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), isNull(exams.deletedAt)))
+    .limit(1);
   if (!exam) return { exam: null as null, error: "Exam not found." };
   if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { exam: null as null, error: "You can only manage exams you created." };
@@ -156,7 +163,7 @@ export async function importQuestions(
   const [maxRow] = await db()
     .select({ value: max(examQuestions.order) })
     .from(examQuestions)
-    .where(eq(examQuestions.examId, examId));
+    .where(and(eq(examQuestions.examId, examId), isNull(examQuestions.deletedAt)));
   const startOrder = (maxRow?.value ?? -1) + 1;
 
   try {
@@ -169,6 +176,9 @@ export async function importQuestions(
           prompt: question.prompt,
           options: question.options ? JSON.stringify(question.options) : null,
           correctOption: question.correctOption,
+          correctOptions: question.correctOptions
+            ? JSON.stringify(question.correctOptions)
+            : null,
           points: question.points,
           order: startOrder + index,
         }))
@@ -182,10 +192,11 @@ export async function importQuestions(
 }
 
 export type QuestionInput = {
-  type: "objective" | "written";
+  type: "objective" | "multiple" | "written";
   prompt: string;
   options: string[] | null;
   correctOption: number | null;
+  correctOptions: number[] | null;
   points: number;
 };
 
@@ -199,11 +210,11 @@ export async function addExamQuestion(
   const { exam, error } = await canManageExam(examId, staff, true);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
-  const type = value(formData, "type") as "objective" | "written";
+  const type = value(formData, "type") as "objective" | "multiple" | "written";
   const prompt = value(formData, "prompt");
   const pointsRaw = value(formData, "points");
 
-  if (type !== "objective" && type !== "written") {
+  if (type !== "objective" && type !== "multiple" && type !== "written") {
     return { ok: false, error: "Please choose a question type." };
   }
   if (prompt.length < 3) return { ok: false, error: "Question text is required (at least 3 characters)." };
@@ -215,22 +226,30 @@ export async function addExamQuestion(
 
   let options: string[] | null = null;
   let correctOption: number | null = null;
-  if (type === "objective") {
+  let correctOptions: number[] | null = null;
+  if (type === "objective" || type === "multiple") {
     const rawOptions = [0, 1, 2, 3].map((index) => value(formData, `option${index}`));
     if (rawOptions.some((option) => !option)) {
       return { ok: false, error: "Every option (A–D) is required for objective questions." };
     }
     options = rawOptions;
-    correctOption = Number(value(formData, "correctOption"));
-    if (!Number.isInteger(correctOption) || correctOption < 0 || correctOption > 3) {
-      return { ok: false, error: "Please choose the correct option." };
+    if (type === "objective") {
+      correctOption = Number(value(formData, "correctOption"));
+      if (!Number.isInteger(correctOption) || correctOption < 0 || correctOption > 3) {
+        return { ok: false, error: "Please choose the correct option." };
+      }
+    } else {
+      correctOptions = [0, 1, 2, 3].filter((index) => value(formData, `correctOption${index}`) === "on");
+      if (correctOptions.length < 1) {
+        return { ok: false, error: "Please choose at least one correct option." };
+      }
     }
   }
 
   const [maxRow] = await db()
     .select({ value: max(examQuestions.order) })
     .from(examQuestions)
-    .where(eq(examQuestions.examId, examId));
+    .where(and(eq(examQuestions.examId, examId), isNull(examQuestions.deletedAt)));
   const order = (maxRow?.value ?? -1) + 1;
 
   try {
@@ -240,6 +259,7 @@ export async function addExamQuestion(
       prompt,
       options: options ? JSON.stringify(options) : null,
       correctOption,
+      correctOptions: correctOptions ? JSON.stringify(correctOptions) : null,
       points,
       order,
     });
@@ -289,14 +309,62 @@ export async function updateExamDetails(examId: string, formData: FormData): Pro
   return { ok: true };
 }
 
-export async function deleteExam(examId: string): Promise<ActionResult> {
+/** Soft-deletes a question. Grades already recorded stay intact. */
+export async function deleteExamQuestion(examId: string, questionId: string): Promise<ActionResult> {
   const staff = await requireStaff();
-  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  if (!isUuid(examId) || !isUuid(questionId)) return { ok: false, error: "Question not found." };
   const { exam, error } = await canManageExam(examId, staff, true);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
+  const [question] = await db()
+    .select({ id: examQuestions.id })
+    .from(examQuestions)
+    .where(and(eq(examQuestions.id, questionId), eq(examQuestions.examId, examId)))
+    .limit(1);
+  if (!question) return { ok: false, error: "Question not found." };
+
   try {
-    await db().delete(exams).where(eq(exams.id, examId));
+    await db()
+      .update(examQuestions)
+      .set({ deletedAt: new Date() })
+      .where(eq(examQuestions.id, questionId));
+  } catch {
+    return { ok: false, error: "Could not delete the question. Try again." };
+  }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_updated",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Removed a question from exam “${exam.title}”`,
+  });
+
+  revalidatePath("/assessments");
+  return { ok: true, message: "Question deleted." };
+}
+
+/**
+ * Soft-deletes an exam. Works for any status (draft, open, closed) and never
+ * removes submissions or grades — they stay intact for reporting.
+ */
+export async function deleteExam(examId: string): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  const { exam, error } = await canManageExam(examId, staff);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+
+  try {
+    await db()
+      .update(exams)
+      .set({ deletedAt: new Date(), status: "closed", updatedAt: new Date() })
+      .where(eq(exams.id, examId));
+    await db()
+      .update(examQuestions)
+      .set({ deletedAt: new Date() })
+      .where(eq(examQuestions.examId, examId));
   } catch {
     return { ok: false, error: "Could not delete the exam. Try again." };
   }
@@ -308,11 +376,41 @@ export async function deleteExam(examId: string): Promise<ActionResult> {
     action: "exam_deleted",
     entityType: "exam",
     entityId: examId,
-    summary: `Deleted exam “${exam.title}”`,
+    summary: `Deleted exam “${exam.title}” (grades kept)`,
   });
 
   revalidatePath("/assessments");
   return { ok: true };
+}
+
+/** Notifies every student with an active trainee profile about a newly opened exam. */
+async function notifyTraineesAboutExam(exam: { id: string; title: string; topic: string }) {
+  try {
+    const studentRows = await db()
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .innerJoin(trainees, eq(trainees.userId, users.id))
+      .where(and(eq(users.role, "student"), eq(trainees.status, "active")));
+
+    if (studentRows.length === 0) return;
+
+    const title = `New exam available: ${exam.title}`;
+    const body = `A new ${exam.topic} exam has been opened. You can take it now.`;
+    const link = "/assessments";
+
+    await db().insert(notifications).values(
+      studentRows.map((student) => ({ userId: student.id, title, body, link }))
+    );
+
+    // Best-effort emails — a missing Brevo key must not fail opening the exam.
+    await Promise.allSettled(
+      studentRows
+        .filter((student) => student.email)
+        .map((student) => sendExamAvailableEmail(student.email!, exam.title, exam.topic))
+    );
+  } catch (error) {
+    console.error("notifyTraineesAboutExam failed", error);
+  }
 }
 
 export async function openExam(examId: string, closesAt: string): Promise<ActionResult> {
@@ -333,7 +431,7 @@ export async function openExam(examId: string, closesAt: string): Promise<Action
   const [questionCount] = await db()
     .select({ value: max(examQuestions.order) })
     .from(examQuestions)
-    .where(eq(examQuestions.examId, examId));
+    .where(and(eq(examQuestions.examId, examId), isNull(examQuestions.deletedAt)));
   if ((questionCount?.value ?? -1) < 0) {
     return { ok: false, error: "Add at least one question before opening the exam." };
   }
@@ -356,6 +454,8 @@ export async function openExam(examId: string, closesAt: string): Promise<Action
     entityId: examId,
     summary: `Opened exam “${exam.title}”`,
   });
+
+  await notifyTraineesAboutExam({ id: examId, title: exam.title, topic: exam.topic });
 
   revalidatePath("/assessments");
   return { ok: true, message: "Exam opened. Trainees can now take it within the set window." };
@@ -426,8 +526,18 @@ export async function reopenExam(examId: string): Promise<ActionResult> {
     summary: `Reopened exam “${exam.title}”`,
   });
 
+  await notifyTraineesAboutExam({ id: examId, title: exam.title, topic: exam.topic });
+
   revalidatePath("/assessments");
   return { ok: true, message: "Exam reopened. Trainees can continue or retake it." };
+}
+
+async function loadQuestions(examId: string) {
+  return db()
+    .select()
+    .from(examQuestions)
+    .where(and(eq(examQuestions.examId, examId), isNull(examQuestions.deletedAt)))
+    .orderBy(asc(examQuestions.order));
 }
 
 async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string) {
@@ -437,15 +547,11 @@ async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string)
     .where(and(eq(examSubmissions.examId, exam.id), eq(examSubmissions.traineeId, traineeId)))
     .limit(1);
 
-  const questionRows = await db()
-    .select()
-    .from(examQuestions)
-    .where(eq(examQuestions.examId, exam.id))
-    .orderBy(asc(examQuestions.order));
+  const questionRows = await loadQuestions(exam.id);
 
   const questions: PlayerQuestion[] = questionRows.map((question) => ({
     id: question.id,
-    type: question.type as "objective" | "written",
+    type: question.type as PlayerQuestion["type"],
     prompt: question.prompt,
     options: question.options ? (JSON.parse(question.options) as string[]) : null,
     points: question.points,
@@ -479,15 +585,19 @@ async function loadSession(exam: (typeof exams.$inferSelect), traineeId: string)
     const totalPoints = submission.totalPoints;
     const autoScore = submission.autoScore ?? 0;
     const writtenScore = submission.writtenScore ?? null;
-    const graded = submission.status === "graded";
-    const hasObjective = questions.some((question) => question.type === "objective");
+    const graded =
+      submission.status === "graded" ||
+      (submission.status === "submitted" && !questions.some((question) => question.type === "written"));
+    const hasAutoGradable = questions.some(
+      (question) => question.type === "objective" || question.type === "multiple"
+    );
     session.result = {
       autoScore,
       totalPoints,
       writtenScore,
       // Written-only exams have no auto-grade until the trainer marks them.
       percent:
-        graded || hasObjective
+        graded || hasAutoGradable
           ? percentOf((autoScore ?? 0) + (writtenScore ?? 0), totalPoints)
           : null,
       graded,
@@ -502,7 +612,11 @@ export async function startExam(examId: string): Promise<ActionResult & { sessio
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
-  const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
+  const [exam] = await db()
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), isNull(exams.deletedAt)))
+    .limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
   if (!isExamOpen(exam)) return { ok: false, error: "This exam is not open right now." };
 
@@ -516,11 +630,7 @@ export async function startExam(examId: string): Promise<ActionResult & { sessio
   const existing = await loadSession(exam, trainee.id);
 
   if (!existing) {
-    const questionRows = await db()
-      .select()
-      .from(examQuestions)
-      .where(eq(examQuestions.examId, exam.id))
-      .orderBy(asc(examQuestions.order));
+    const questionRows = await loadQuestions(exam.id);
     const totalPoints = questionRows.reduce((sum, question) => sum + question.points, 0);
 
     try {
@@ -553,7 +663,11 @@ export async function saveAnswer(
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
-  const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
+  const [exam] = await db()
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), isNull(exams.deletedAt)))
+    .limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
   if (!isExamOpen(exam)) return { ok: false, error: "This exam is no longer open." };
 
@@ -631,12 +745,48 @@ export async function recordViolation(examId: string): Promise<ActionResult & { 
   return { ok: true, violations };
 }
 
+/** Auto-grades one question's answer. Returns earned points. */
+function autoGradeQuestion(
+  question: { type: string; correctOption: number | null; correctOptions: string | null; points: number },
+  answer: string | undefined
+): number {
+  if (answer === undefined) return 0;
+  if (question.type === "objective") {
+    return String(answer) === String(question.correctOption) ? question.points : 0;
+  }
+  if (question.type === "multiple") {
+    let correct: number[];
+    try {
+      correct = question.correctOptions ? (JSON.parse(question.correctOptions) as number[]) : [];
+    } catch {
+      return 0;
+    }
+    if (correct.length === 0) return 0;
+    let selected: number[];
+    try {
+      selected = JSON.parse(answer) as number[];
+    } catch {
+      return 0;
+    }
+    const same =
+      Array.isArray(selected) &&
+      selected.length === correct.length &&
+      [...selected].sort().every((value, index) => value === [...correct].sort()[index]);
+    return same ? question.points : 0;
+  }
+  return 0;
+}
+
 export async function submitExam(examId: string): Promise<ActionResult & { result?: ExamResult }> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
-  const [exam] = await db().select().from(exams).where(eq(exams.id, examId)).limit(1);
+  const [exam] = await db()
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, examId), isNull(exams.deletedAt)))
+    .limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
 
   const [trainee] = await db()
@@ -653,10 +803,13 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
     .limit(1);
   if (!submission) return { ok: false, error: "No attempt found for this exam." };
 
+  const questionRows = await loadQuestions(examId);
+
   if (submission.status === "submitted" || submission.status === "graded") {
     const writtenScore = submission.writtenScore ?? null;
     const autoScore = submission.autoScore ?? 0;
-    const graded = submission.status === "graded";
+    const hasWritten = questionRows.some((question) => question.type === "written");
+    const graded = submission.status === "graded" || (submission.status === "submitted" && !hasWritten);
     return {
       ok: true,
       result: {
@@ -669,24 +822,27 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
     };
   }
 
-  const questionRows = await db()
-    .select()
-    .from(examQuestions)
-    .where(eq(examQuestions.examId, examId))
-    .orderBy(asc(examQuestions.order));
   const answers = submission.answers ? (JSON.parse(submission.answers) as Record<string, string>) : {};
 
   let autoScore = 0;
   for (const question of questionRows) {
-    if (question.type !== "objective" || question.correctOption === null) continue;
-    if (String(answers[question.id]) === String(question.correctOption)) {
-      autoScore += question.points;
-    }
+    autoScore += autoGradeQuestion(question, answers[question.id]);
   }
 
   // Written-only exams have nothing to auto-grade yet; don't show/write 0%.
-  const hasObjective = questionRows.some((question) => question.type === "objective");
-  const percent = hasObjective ? percentOf(autoScore, submission.totalPoints) : null;
+  const hasAutoGradable = questionRows.some(
+    (question) => question.type === "objective" || question.type === "multiple"
+  );
+  const percent = hasAutoGradable ? percentOf(autoScore, submission.totalPoints) : null;
+
+  // FEAT-06: first-pass LLM suggestion for written questions. Best-effort — if
+  // no GEMINI_API_KEY is set or the call fails, the trainer grades manually.
+  let llmGrades: Record<string, number> | null = null;
+  const writtenQuestions = questionRows.filter((question) => question.type === "written");
+  if (writtenQuestions.length > 0) {
+    const raw = await suggestWrittenGrades(writtenQuestions, answers);
+    llmGrades = sanitizeLlmGrades(raw, writtenQuestions);
+  }
 
   try {
     await db()
@@ -696,9 +852,9 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
         submittedAt: new Date(),
         answers: JSON.stringify(answers),
         autoScore,
+        llmGrades: llmGrades ? JSON.stringify(llmGrades) : null,
       })
       .where(eq(examSubmissions.id, submission.id));
-
   } catch {
     return { ok: false, error: "Could not submit the exam. Try again." };
   }
@@ -707,7 +863,13 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
   revalidatePath("/portal");
   return {
     ok: true,
-    result: { autoScore, totalPoints: submission.totalPoints, writtenScore: null, percent, graded: false },
+    result: {
+      autoScore,
+      totalPoints: submission.totalPoints,
+      writtenScore: null,
+      percent,
+      graded: false,
+    },
   };
 }
 
@@ -737,7 +899,13 @@ export async function gradeWritten(
   const writtenQuestions = await db()
     .select()
     .from(examQuestions)
-    .where(and(eq(examQuestions.examId, exam.id), eq(examQuestions.type, "written")));
+    .where(
+      and(
+        eq(examQuestions.examId, exam.id),
+        eq(examQuestions.type, "written"),
+        isNull(examQuestions.deletedAt)
+      )
+    );
 
   let writtenScore = 0;
   const graded: Record<string, number> = {};
@@ -764,7 +932,6 @@ export async function gradeWritten(
         gradedAt: new Date(),
       })
       .where(eq(examSubmissions.id, submissionId));
-
   } catch {
     return { ok: false, error: "Could not save the grades. Try again." };
   }
