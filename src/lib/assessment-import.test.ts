@@ -30,12 +30,12 @@ function escapeXml(value: string): string {
 }
 
 /**
- * Builds a .docx where each question is ONE paragraph whose lines are
- * separated by literal newlines. That is the layout the importer supports:
- * mammoth appends two newlines after every paragraph, so a question's lines
- * must live inside a single paragraph to end up in the same block.
+ * Builds a .docx from a list of paragraphs (one <w:p> per entry, blank for
+ * empty paragraphs). Pass each line as its own paragraph to mimic standard
+ * Word documents, or join a question's lines with "\n" inside one paragraph
+ * for the literal-newline layout.
  */
-async function docxFile(questions: string[], name = "questions.docx"): Promise<File> {
+async function docxFile(paragraphs: string[], name = "questions.docx"): Promise<File> {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -52,7 +52,7 @@ async function docxFile(questions: string[], name = "questions.docx"): Promise<F
     [
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>',
-      questions.map((q) => `<w:p><w:r><w:t>${escapeXml(q)}</w:t></w:r></w:p>`).join(""),
+      paragraphs.map((p) => `<w:p><w:r><w:t>${escapeXml(p)}</w:t></w:r></w:p>`).join(""),
       "</w:body></w:document>",
     ].join("")
   );
@@ -259,6 +259,69 @@ describe("parseQuestionFile — Word (.docx)", () => {
         points: 1, // default when no Points line
       },
     ]);
+  });
+
+  it("parses standard Word documents with one paragraph per line", async () => {
+    const file = await docxFile([
+      "What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: B",
+      "Points: 2",
+      "", // blank paragraph between questions
+      "Explain how a stacked bar chart differs from a grouped bar chart.",
+    ]);
+
+    const result = await parseQuestionFile(file);
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions).toEqual([
+      {
+        type: "objective",
+        prompt: "What colour model is used for print?",
+        options: ["RGB", "CMYK", "HSV", "HSL"],
+        correctOption: 1,
+        points: 2,
+      },
+      {
+        type: "written",
+        prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
+        options: null,
+        correctOption: null,
+        points: 1,
+      },
+    ]);
+  });
+
+  it("groups consecutive paragraphs into questions without blank separators", async () => {
+    const file = await docxFile([
+      "What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: B",
+      "Points: 2",
+      "Explain how a stacked bar chart differs from a grouped bar chart.",
+    ]);
+
+    const result = await parseQuestionFile(file);
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      options: ["RGB", "CMYK", "HSV", "HSL"],
+      correctOption: 1,
+      points: 2,
+    });
+    expect(result.questions?.[1]).toMatchObject({
+      type: "written",
+      prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
+    });
   });
 
   it("rejects a question whose Answer does not match an option", async () => {

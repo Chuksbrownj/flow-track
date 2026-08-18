@@ -145,8 +145,9 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
 /**
  * Parses a Microsoft Word (.docx) question paper into validated questions.
  *
- * The document is read as plain text; each question is separated from the
- * next by a blank line and laid out as:
+ * The document is read as plain text. Questions are detected by content, so
+ * both common layouts work — each line as its own paragraph (typical Word
+ * documents) or literal newlines inside a single paragraph:
  *
  *   What colour model is used for print?
  *   A) RGB
@@ -168,22 +169,31 @@ async function parseDocxQuestions(file: File): Promise<ImportResult> {
     return { ok: false, errors: ["Could not read the Word document. Make sure it is a valid .docx file."] };
   }
 
+  // mammoth emits two newlines after every paragraph, so a standard Word
+  // document (one line per paragraph) and a document with literal newlines
+  // inside a paragraph arrive here identically. Group by content instead of
+  // blank lines: an option/answer/points line continues the current question
+  // and any other line starts a new one.
+  const OPTION_LINE = /^([A-Fa-f])[).]\s*(.+)$/;
+  const ANSWER_LINE = /^answer\s*[::]?\s*([A-Fa-f])$/i;
+  const POINTS_LINE = /^points\s*[::]?\s*(\d+)$/i;
+
   const lines = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => line.trim());
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
 
   const blocks: string[][] = [];
   let current: string[] = [];
   for (const line of lines) {
-    if (line === "") {
-      if (current.length > 0) {
-        blocks.push(current);
-        current = [];
-      }
-    } else {
-      current.push(line);
+    const continuesQuestion =
+      OPTION_LINE.test(line) || ANSWER_LINE.test(line) || POINTS_LINE.test(line);
+    if (!continuesQuestion && current.length > 0) {
+      blocks.push(current);
+      current = [];
     }
+    current.push(line);
   }
   if (current.length > 0) blocks.push(current);
 
@@ -203,17 +213,17 @@ async function parseDocxQuestions(file: File): Promise<ImportResult> {
     let points = 1;
 
     for (const line of block) {
-      const optionMatch = /^([A-Fa-f])[).]\s*(.+)$/.exec(line);
+      const optionMatch = OPTION_LINE.exec(line);
       if (optionMatch) {
         optionLines.push({ letter: optionMatch[1].toUpperCase(), text: optionMatch[2].trim() });
         continue;
       }
-      const answerMatch = /^answer\s*[::]?\s*([A-Fa-f])$/i.exec(line);
+      const answerMatch = ANSWER_LINE.exec(line);
       if (answerMatch) {
         correct = answerMatch[1].toUpperCase();
         continue;
       }
-      const pointsMatch = /^points\s*[::]?\s*(\d+)$/i.exec(line);
+      const pointsMatch = POINTS_LINE.exec(line);
       if (pointsMatch) {
         points = Number(pointsMatch[1]);
         continue;
