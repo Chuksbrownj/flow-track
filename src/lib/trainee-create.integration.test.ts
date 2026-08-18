@@ -47,6 +47,11 @@ vi.mock("@/lib/rate-limit", () => ({
   rateLimit: vi.fn(async () => ({ ok: true })),
 }));
 
+// Assert createTrainee triggers the credentials email (the real send path is
+// verified separately against the Brevo API).
+const sendStudentCredentialsEmail = vi.fn(async () => true);
+vi.mock("@/lib/email", () => ({ sendStudentCredentialsEmail }));
+
 const { createTrainee, updateTrainee } = await import("@/lib/actions/trainees");
 
 async function cleanup() {
@@ -105,6 +110,15 @@ describe("admin-created trainee login flow (real DB)", () => {
     // Email path also resolves to the same account.
     const [byEmail] = await db().select().from(users).where(eq(users.email, email)).limit(1);
     expect(byEmail?.id).toBe(user.id);
+
+    // The credentials email is triggered with the sign-in details.
+    expect(sendStudentCredentialsEmail).toHaveBeenCalledWith(
+      email,
+      "Integration Test Trainee",
+      reg,
+      email,
+      password
+    );
   });
 
   it("edit flow creates an account for an accountless trainee", async () => {
