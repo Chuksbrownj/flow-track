@@ -1,4 +1,4 @@
-import { lt, sql } from "drizzle-orm";
+import { eq, lt, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { rateLimits } from "@/db/schema";
@@ -59,6 +59,49 @@ export async function rateLimit(
     return { ok: false, retryAfterSeconds };
   }
   return { ok: true };
+}
+
+/**
+ * Checks the current counter WITHOUT counting this attempt. Used by flows
+ * that want to count only failed attempts (e.g. login), so successful
+ * requests never consume the quota — important on shared campus networks
+ * where many students share one IP. An expired window counts as fresh.
+ */
+export async function checkRateLimit(key: string, limit: number): Promise<RateLimitResult> {
+  const now = Date.now();
+  const [row] = await db()
+    .select({ count: rateLimits.count, resetAt: rateLimits.resetAt })
+    .from(rateLimits)
+    .where(eq(rateLimits.key, key));
+  if (!row || row.resetAt.getTime() <= now) return { ok: true };
+  if (row.count > limit) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((row.resetAt.getTime() - now) / 1000));
+    return { ok: false, retryAfterSeconds };
+  }
+  return { ok: true };
+}
+
+/**
+ * Records one failed attempt: increments the counter, or starts a fresh
+ * window when the previous one has expired (same reset semantics as
+ * `rateLimit`). Best-effort — a failed write must never break the caller.
+ */
+export async function recordRateLimitFailure(key: string, windowMs: number): Promise<void> {
+  const now = Date.now();
+  try {
+    await db()
+      .insert(rateLimits)
+      .values({ key, count: 1, resetAt: new Date(now + windowMs) })
+      .onConflictDoUpdate({
+        target: rateLimits.key,
+        set: {
+          count: sql`CASE WHEN ${rateLimits.resetAt} <= ${new Date(now)} THEN 1 ELSE ${rateLimits.count} + 1 END`,
+          resetAt: sql`CASE WHEN ${rateLimits.resetAt} <= ${new Date(now)} THEN ${new Date(now + windowMs)} ELSE ${rateLimits.resetAt} END`,
+        },
+      });
+  } catch (error) {
+    console.error("recordRateLimitFailure: could not record attempt", error);
+  }
 }
 
 /**

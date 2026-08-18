@@ -5,21 +5,39 @@ const { mockDb, mockCalls } = vi.hoisted(() => {
     deleteWhere: 0,
     upserts: 0,
     setClause: null as null | { count: unknown; resetAt: unknown },
+    selectRows: [] as { count: number; resetAt: Date }[],
   };
   const mockDb: {
     sweepThrows: boolean;
     insert: () => unknown;
     delete: () => unknown;
+    select: () => unknown;
   } = {
     sweepThrows: false,
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          then: (resolve: (value: unknown) => void) => resolve(mockCalls.selectRows),
+        }),
+      }),
+    }),
     insert: () => ({
       values: () => ({
         onConflictDoUpdate: (options: { set: { count: unknown; resetAt: unknown } }) => {
           mockCalls.setClause = options.set;
-          return {
+          const result = {
             returning: async () => {
               mockCalls.upserts += 1;
               return [{ count: 1, resetAt: new Date(Date.now() + 60_000) }];
+            },
+          };
+          // Awaiting onConflictDoUpdate directly (no .returning chained) must
+          // also execute the UPSERT.
+          return {
+            ...result,
+            then: (resolve: (value: unknown) => void) => {
+              mockCalls.upserts += 1;
+              resolve(result);
             },
           };
         },
@@ -40,12 +58,13 @@ const { mockDb, mockCalls } = vi.hoisted(() => {
 
 vi.mock("@/db/client", () => ({ db: () => mockDb }));
 
-import { rateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, rateLimit, recordRateLimitFailure } from "@/lib/rate-limit";
 
 beforeEach(() => {
   mockCalls.deleteWhere = 0;
   mockCalls.upserts = 0;
   mockCalls.setClause = null;
+  mockCalls.selectRows = [];
   mockDb.sweepThrows = false;
 });
 
@@ -119,5 +138,64 @@ describe("rateLimit opportunistic sweep", () => {
     const result = await rateLimit("test:key", 5, 60_000);
 
     expect(result).toEqual({ ok: true });
+  });
+});
+
+describe("checkRateLimit", () => {
+  it("allows when there is no counter yet", async () => {
+    mockCalls.selectRows = [];
+    expect(await checkRateLimit("k", 5)).toEqual({ ok: true });
+  });
+
+  it("allows when the window has expired (fresh start)", async () => {
+    mockCalls.selectRows = [
+      { count: 99, resetAt: new Date(Date.now() - 1000) },
+    ];
+    expect(await checkRateLimit("k", 5)).toEqual({ ok: true });
+  });
+
+  it("allows when the count is within the limit", async () => {
+    mockCalls.selectRows = [
+      { count: 4, resetAt: new Date(Date.now() + 60_000) },
+    ];
+    expect(await checkRateLimit("k", 5)).toEqual({ ok: true });
+  });
+
+  it("blocks when the count exceeds the limit", async () => {
+    mockCalls.selectRows = [
+      { count: 6, resetAt: new Date(Date.now() + 120_000) },
+    ];
+    const result = await checkRateLimit("k", 5);
+    expect(result.ok).toBe(false);
+    expect(result.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not count the attempt it is checking", async () => {
+    mockCalls.selectRows = [
+      { count: 1, resetAt: new Date(Date.now() + 60_000) },
+    ];
+    await checkRateLimit("k", 5);
+    expect(mockCalls.upserts).toBe(0); // no UPSERT happened
+  });
+});
+
+describe("recordRateLimitFailure", () => {
+  it("increments the counter with a window reset", async () => {
+    await recordRateLimitFailure("k", 60_000);
+
+    expect(mockCalls.upserts).toBe(1);
+    const sqlText = (value: unknown) => {
+      const chunks = (value as { queryChunks?: unknown[] }).queryChunks ?? [];
+      return chunks
+        .map((chunk) => {
+          const inner = (chunk as { value?: unknown }).value;
+          if (Array.isArray(inner)) {
+            return inner.filter((x): x is string => typeof x === "string").join("");
+          }
+          return "";
+        })
+        .join("");
+    };
+    expect(sqlText(mockCalls.setClause?.count)).toContain("THEN 1 ELSE");
   });
 });
