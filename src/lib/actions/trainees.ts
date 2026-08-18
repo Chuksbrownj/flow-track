@@ -243,6 +243,17 @@ export async function updateTrainee(
     } catch {
       return { ok: false, error: "Could not create the sign-in account. Try again." };
     }
+    // Email the sign-in details now that the account exists. Best-effort: a
+    // missing Brevo key or failed send must never block the update.
+    if (input.email) {
+      await sendStudentCredentialsEmail(
+        input.email,
+        input.fullName,
+        registrationNumber ?? "",
+        input.email,
+        password
+      ).catch(() => {});
+    }
   } else if (existing.userId && password) {
     return {
       ok: false,

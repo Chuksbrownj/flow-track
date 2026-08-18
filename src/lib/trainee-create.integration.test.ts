@@ -69,7 +69,10 @@ async function cleanup() {
 }
 
 describe("admin-created trainee login flow (real DB)", () => {
-  beforeEach(cleanup);
+  beforeEach(() => {
+    sendStudentCredentialsEmail.mockClear();
+    return cleanup();
+  });
   afterEach(cleanup);
 
   it("creates a linked account whose password works for login", async () => {
@@ -151,7 +154,7 @@ describe("admin-created trainee login flow (real DB)", () => {
         fullName: "Legacy Trainee",
         gender: "Male",
         phone: "08011111111",
-        email: null,
+        email: email,
         status: "active",
         userId: null,
       })
@@ -162,7 +165,7 @@ describe("admin-created trainee login flow (real DB)", () => {
     fd.set("fullName", "Legacy Trainee");
     fd.set("gender", "Male");
     fd.set("phone", "08011111111");
-    fd.set("email", "");
+    fd.set("email", email);
     fd.set("password", password);
     fd.set("confirmPassword", password);
 
@@ -179,6 +182,15 @@ describe("admin-created trainee login flow (real DB)", () => {
     const [account] = await db().select().from(users).where(eq(users.id, after.userId!)).limit(1);
     expect(account.role).toBe("student");
     expect(await bcrypt.compare(password, account.passwordHash)).toBe(true);
+
+    // The credentials email is triggered with the sign-in details.
+    expect(sendStudentCredentialsEmail).toHaveBeenCalledWith(
+      email,
+      "Legacy Trainee",
+      reg,
+      email,
+      password
+    );
 
     // Remove the throwaway admin.
     await db().delete(users).where(eq(users.id, admin.id)).catch(() => {});
