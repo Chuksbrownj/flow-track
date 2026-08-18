@@ -10,7 +10,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { recordTraineeChange } from "@/lib/trainee-logs";
 import { recordAudit } from "@/lib/audit";
 import { isUuid, validatePassword, validateTrainee } from "@/lib/validation";
-import { sendSuspendRequestNotice } from "@/lib/email";
+import { sendStudentCredentialsEmail, sendSuspendRequestNotice } from "@/lib/email";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -115,6 +115,18 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
       entityId: createdId,
       summary: `Added trainee ${input.fullName} (${registrationNumber})`,
     });
+  }
+
+  // Email the sign-in details to the trainee. Best-effort: a missing Brevo
+  // key or a failed send must never block the trainee from being created.
+  if (input.email) {
+    await sendStudentCredentialsEmail(
+      input.email,
+      input.fullName,
+      registrationNumber,
+      input.email,
+      password
+    ).catch(() => {});
   }
 
   revalidatePath("/trainees");

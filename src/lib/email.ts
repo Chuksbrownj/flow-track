@@ -114,6 +114,39 @@ export async function sendExamAvailableEmail(
   );
 }
 
+export async function sendStudentCredentialsEmail(
+  to: string,
+  name: string,
+  registrationNumber: string,
+  loginEmail: string | null,
+  password: string
+) {
+  const loginRows = [
+    `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Registration number</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(registrationNumber)}</td></tr>`,
+  ];
+  if (loginEmail) {
+    loginRows.push(
+      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Email</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(loginEmail)}</td></tr>`
+    );
+  }
+  return sendEmail(
+    to,
+    "Your FlowTrack student account",
+    [
+      "<div style=\"font-family: sans-serif; max-width: 480px; margin: 0 auto;\">",
+      `<h2 style="color: #0f172a;">Welcome, ${escapeHtml(name)}!</h2>`,
+      "<p style=\"color: #334155;\">A FlowTrack account has been created for you by your trainer. Sign in with your registration number (or email) and this password:</p>",
+      "<table style=\"border-collapse: collapse; margin: 12px 0;\">",
+      ...loginRows,
+      `<tr><td style="padding: 6px 12px; font-weight: 600; color: #0f172a;">Password</td><td style="padding: 6px 12px; color: #334155;">${escapeHtml(password)}</td></tr>`,
+      "</table>",
+      `<p><a href="${process.env.APP_URL ?? "https://flow-track-gilt.vercel.app"}/login" style="display:inline-block;background:#16a34a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Sign in</a></p>`,
+      "<p style=\"color: #64748b; font-size: 13px;\">We recommend changing your password after your first sign in.</p>",
+      "</div>",
+    ].join("")
+  );
+}
+
 export async function sendAccountCredentialsEmail(
   to: string,
   name: string,
