@@ -17,7 +17,10 @@ const SWEEP_PROBABILITY = 0.01;
  * instances because the counters live in the database.
  *
  * Uses a single atomic UPSERT so concurrent requests can neither double-insert
- * (unique-key 500) nor race the count increment past the limit.
+ * (unique-key 500) nor race the count increment past the limit. When the
+ * window has expired the counter resets to 1 (a fresh window), so a user who
+ * was locked out can log in again after the wait — the counter never grows
+ * unboundedly.
  */
 export async function rateLimit(
   key: string,
@@ -43,7 +46,8 @@ export async function rateLimit(
     .onConflictDoUpdate({
       target: rateLimits.key,
       set: {
-        count: sql`${rateLimits.count} + 1`,
+        // Expired window → start a fresh window (count 1); active window → increment.
+        count: sql`CASE WHEN ${rateLimits.resetAt} <= ${new Date(now)} THEN 1 ELSE ${rateLimits.count} + 1 END`,
         resetAt: sql`CASE WHEN ${rateLimits.resetAt} <= ${new Date(now)} THEN ${new Date(now + windowMs)} ELSE ${rateLimits.resetAt} END`,
       },
     })
