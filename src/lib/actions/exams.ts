@@ -64,8 +64,7 @@ function percentOf(score: number | null, totalPoints: number): number | null {
 
 async function canManageExam(
   examId: string,
-  staff: { id: string; role: string },
-  requireDraft = false
+  staff: { id: string; role: string }
 ) {
   const [exam] = await db()
     .select()
@@ -75,9 +74,6 @@ async function canManageExam(
   if (!exam) return { exam: null as null, error: "Exam not found." };
   if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { exam: null as null, error: "You can only manage exams you created." };
-  }
-  if (requireDraft && exam.status !== "draft") {
-    return { exam: null as null, error: "Only draft exams can be edited." };
   }
   return { exam, error: null as null };
 }
@@ -140,9 +136,6 @@ export async function importQuestions(
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
-  if (exam.status !== "draft") {
-    return { ok: false, error: "Questions can only be added while the exam is a draft." };
-  }
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
@@ -200,16 +193,9 @@ export type QuestionInput = {
   points: number;
 };
 
-/** Adds one question to a draft exam (form-based question builder). */
-export async function addExamQuestion(
-  examId: string,
+function parseQuestionForm(
   formData: FormData
-): Promise<ActionResult> {
-  const staff = await requireStaff();
-  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  const { exam, error } = await canManageExam(examId, staff, true);
-  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
-
+): { ok: true; input: QuestionInput } | { ok: false; error: string } {
   const type = value(formData, "type") as "objective" | "multiple" | "written";
   const prompt = value(formData, "prompt");
   const pointsRaw = value(formData, "points");
@@ -217,7 +203,9 @@ export async function addExamQuestion(
   if (type !== "objective" && type !== "multiple" && type !== "written") {
     return { ok: false, error: "Please choose a question type." };
   }
-  if (prompt.length < 3) return { ok: false, error: "Question text is required (at least 3 characters)." };
+  if (prompt.length < 3) {
+    return { ok: false, error: "Question text is required (at least 3 characters)." };
+  }
 
   const points = Number(pointsRaw);
   if (!Number.isInteger(points) || points < 1 || points > 100) {
@@ -239,12 +227,31 @@ export async function addExamQuestion(
         return { ok: false, error: "Please choose the correct option." };
       }
     } else {
-      correctOptions = [0, 1, 2, 3].filter((index) => value(formData, `correctOption${index}`) === "on");
+      correctOptions = [0, 1, 2, 3].filter(
+        (index) => value(formData, `correctOption${index}`) === "on"
+      );
       if (correctOptions.length < 1) {
         return { ok: false, error: "Please choose at least one correct option." };
       }
     }
   }
+
+  return { ok: true, input: { type, prompt, options, correctOption, correctOptions, points } };
+}
+
+/** Adds one question to an exam (form-based question builder). */
+export async function addExamQuestion(
+  examId: string,
+  formData: FormData
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  const { exam, error } = await canManageExam(examId, staff);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+
+  const parsed = parseQuestionForm(formData);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const input = parsed.input;
 
   const [maxRow] = await db()
     .select({ value: max(examQuestions.order) })
@@ -255,12 +262,12 @@ export async function addExamQuestion(
   try {
     await db().insert(examQuestions).values({
       examId,
-      type,
-      prompt,
-      options: options ? JSON.stringify(options) : null,
-      correctOption,
-      correctOptions: correctOptions ? JSON.stringify(correctOptions) : null,
-      points,
+      type: input.type,
+      prompt: input.prompt,
+      options: input.options ? JSON.stringify(input.options) : null,
+      correctOption: input.correctOption,
+      correctOptions: input.correctOptions ? JSON.stringify(input.correctOptions) : null,
+      points: input.points,
       order,
     });
   } catch {
@@ -271,10 +278,62 @@ export async function addExamQuestion(
   return { ok: true, message: "Question added." };
 }
 
+/** Updates an existing question's text, options, answer key, and points. */
+export async function updateExamQuestion(
+  examId: string,
+  questionId: string,
+  formData: FormData
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId) || !isUuid(questionId)) return { ok: false, error: "Question not found." };
+  const { exam, error } = await canManageExam(examId, staff);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+
+  const [question] = await db()
+    .select({ id: examQuestions.id })
+    .from(examQuestions)
+    .where(and(eq(examQuestions.id, questionId), eq(examQuestions.examId, examId)))
+    .limit(1);
+  if (!question) return { ok: false, error: "Question not found." };
+
+  const parsed = parseQuestionForm(formData);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const input = parsed.input;
+
+  try {
+    await db()
+      .update(examQuestions)
+      .set({
+        type: input.type,
+        prompt: input.prompt,
+        options: input.options ? JSON.stringify(input.options) : null,
+        correctOption: input.correctOption,
+        correctOptions: input.correctOptions ? JSON.stringify(input.correctOptions) : null,
+        points: input.points,
+      })
+      .where(eq(examQuestions.id, questionId));
+  } catch {
+    return { ok: false, error: "Could not update the question. Try again." };
+  }
+
+  await recordAudit({
+    actorId: staff.id,
+    actorName: staff.name ?? null,
+    actorRole: staff.role,
+    action: "exam_updated",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Updated a question in exam “${exam.title}”`,
+  });
+
+  revalidatePath("/assessments");
+  return { ok: true, message: "Question updated." };
+}
+
 export async function updateExamDetails(examId: string, formData: FormData): Promise<ActionResult> {
   const staff = await requireStaff();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  const { exam, error } = await canManageExam(examId, staff, true);
+  const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
   const title = value(formData, "title");
@@ -313,7 +372,7 @@ export async function updateExamDetails(examId: string, formData: FormData): Pro
 export async function deleteExamQuestion(examId: string, questionId: string): Promise<ActionResult> {
   const staff = await requireStaff();
   if (!isUuid(examId) || !isUuid(questionId)) return { ok: false, error: "Question not found." };
-  const { exam, error } = await canManageExam(examId, staff, true);
+  const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
 
   const [question] = await db()

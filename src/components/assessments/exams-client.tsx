@@ -72,6 +72,7 @@ import {
   overrideSubmission,
   reopenExam,
   updateExamDetails,
+  updateExamQuestion,
 } from "@/lib/actions/exams";
 import { questionTemplateCsv } from "@/lib/assessment-import";
 
@@ -95,6 +96,8 @@ export type QuestionRow = {
   type: "objective" | "multiple" | "written";
   prompt: string;
   options: string[] | null;
+  correctOption: number | null;
+  correctOptions: number[] | null;
   points: number;
 };
 
@@ -148,6 +151,14 @@ export function ExamsClient({
   const [editTarget, setEditTarget] = useState<ExamListItem | null>(null);
   const [gradeTarget, setGradeTarget] = useState<{ submission: SubmissionRow; exam: ExamListItem } | null>(null);
   const [addQuestionTarget, setAddQuestionTarget] = useState<ExamListItem | null>(null);
+  const [editQuestionTarget, setEditQuestionTarget] = useState<{
+    exam: ExamListItem;
+    question: QuestionRow;
+  } | null>(null);
+  const [confirmEditTarget, setConfirmEditTarget] = useState<{
+    exam: ExamListItem;
+    question: QuestionRow;
+  } | null>(null);
   const [deleteQuestionTarget, setDeleteQuestionTarget] = useState<{
     exam: ExamListItem;
     question: QuestionRow;
@@ -230,7 +241,6 @@ export function ExamsClient({
         <div className="space-y-4">
           {exams.map((exam) => {
             const expanded = expandedId === exam.id;
-            const canEdit = exam.status === "draft";
             return (
               <Card key={exam.id}>
                 <CardHeader className="pb-3">
@@ -254,41 +264,30 @@ export function ExamsClient({
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      {canEdit ? (
-                        <>
-                          <UploadQuestionsButton
-                            busy={busy}
-                            onUpload={(formData) => run(exam.id, () => importQuestions(exam.id, formData))}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={() => setAddQuestionTarget(exam)}
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add question
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            disabled={exam.questionCount === 0}
-                            onClick={() => setOpenTarget(exam)}
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            Open
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            onClick={() => setEditTarget(exam)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Edit
-                          </Button>
-                        </>
+                      <UploadQuestionsButton
+                        busy={busy}
+                        onUpload={(formData) => run(exam.id, () => importQuestions(exam.id, formData))}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => setAddQuestionTarget(exam)}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add question
+                      </Button>
+                      {exam.status === "draft" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={exam.questionCount === 0}
+                          onClick={() => setOpenTarget(exam)}
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          Open
+                        </Button>
                       ) : exam.status === "open" ? (
                         <Button
                           variant="outline"
@@ -310,6 +309,15 @@ export function ExamsClient({
                           Reopen
                         </Button>
                       ) : null}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => setEditTarget(exam)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </Button>
                       <Button
                         variant={expanded ? "secondary" : "ghost"}
                         size="sm"
@@ -383,7 +391,20 @@ export function ExamsClient({
                                   {question.points} pt{question.points === 1 ? "" : "s"}
                                 </p>
                               </div>
-                              {canEdit ? (
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground"
+                                  title="Edit question"
+                                  onClick={() =>
+                                    exam.submissions.length > 0
+                                      ? setConfirmEditTarget({ exam, question })
+                                      : setEditQuestionTarget({ exam, question })
+                                  }
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -393,7 +414,7 @@ export function ExamsClient({
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
-                              ) : null}
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -530,9 +551,10 @@ export function ExamsClient({
       >
         <DialogContent className="sm:max-w-lg">
           {addQuestionTarget ? (
-            <AddQuestionForm
+            <QuestionForm
               key={addQuestionTarget.id}
               exam={addQuestionTarget}
+              initial={null}
               onSubmit={(formData) => {
                 setPendingId(addQuestionTarget.id);
                 startTransition(async () => {
@@ -552,6 +574,66 @@ export function ExamsClient({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={editQuestionTarget !== null}
+        onOpenChange={(open) => !open && setEditQuestionTarget(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {editQuestionTarget ? (
+            <QuestionForm
+              key={editQuestionTarget.question.id}
+              exam={editQuestionTarget.exam}
+              initial={editQuestionTarget.question}
+              onSubmit={(formData) => {
+                const { exam, question } = editQuestionTarget;
+                setPendingId(question.id);
+                startTransition(async () => {
+                  const result = await updateExamQuestion(exam.id, question.id, formData);
+                  setPendingId(null);
+                  if (result.ok) {
+                    toast.success(result.message ?? "Question updated.");
+                    setEditQuestionTarget(null);
+                    router.refresh();
+                  } else {
+                    toast.error(result.error ?? "Something went wrong.");
+                  }
+                });
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={confirmEditTarget !== null}
+        onOpenChange={(open) => !open && setConfirmEditTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edit this question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This exam already has {confirmEditTarget?.exam.submissions.length ?? 0}{" "}
+              submission{confirmEditTarget?.exam.submissions.length === 1 ? "" : "s"}. Editing
+              the question won&apos;t change grades already recorded — only new attempts will use
+              the updated version.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!confirmEditTarget) return;
+                const target = confirmEditTarget;
+                setConfirmEditTarget(null);
+                setEditQuestionTarget(target);
+              }}
+            >
+              Continue editing
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={deleteQuestionTarget !== null}
@@ -751,17 +833,29 @@ function UploadQuestionsButton({
   );
 }
 
-/** One-at-a-time manual question entry (form-based question builder). */
-function AddQuestionForm({
+/** Question builder used for both adding a new question and editing an existing one. */
+function QuestionForm({
   exam,
+  initial,
   onSubmit,
 }: {
   exam: ExamListItem;
+  /** When set, the form is pre-filled and edits this question. */
+  initial: QuestionRow | null;
   onSubmit: (formData: FormData) => void;
 }) {
-  const [type, setType] = useState<"objective" | "multiple" | "written">("objective");
-  const [correct, setCorrect] = useState("0");
-  const [correctMulti, setCorrectMulti] = useState<Set<number>>(new Set());
+  const isEdit = initial !== null;
+  const [type, setType] = useState<"objective" | "multiple" | "written">(
+    initial?.type ?? "objective"
+  );
+  const [correct, setCorrect] = useState(
+    initial?.correctOption !== null && initial?.correctOption !== undefined
+      ? String(initial.correctOption)
+      : "0"
+  );
+  const [correctMulti, setCorrectMulti] = useState<Set<number>>(
+    () => new Set(initial?.correctOptions ?? [])
+  );
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -782,10 +876,12 @@ function AddQuestionForm({
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           <FileUp className="h-4 w-4 text-primary" />
-          Add question to &quot;{exam.title}&quot;
+          {isEdit ? "Edit question" : <>Add question to &quot;{exam.title}&quot;</>}
         </DialogTitle>
         <DialogDescription>
-          Build questions one at a time. The window closes after saving so you can add the next one.
+          {isEdit
+            ? exam.topic
+            : "Build questions one at a time. The window closes after saving so you can add the next one."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-2">
@@ -807,14 +903,27 @@ function AddQuestionForm({
       </div>
       <div className="space-y-2">
         <Label htmlFor="question-prompt">Question</Label>
-        <Textarea id="question-prompt" name="prompt" rows={2} required placeholder="Enter the question text" />
+        <Textarea
+          id="question-prompt"
+          name="prompt"
+          rows={2}
+          required
+          placeholder="Enter the question text"
+          defaultValue={initial?.prompt ?? ""}
+        />
       </div>
       {type === "objective" || type === "multiple" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {[0, 1, 2, 3].map((index) => (
             <div key={index} className="space-y-2">
               <Label htmlFor={`option-${index}`}>Option {String.fromCharCode(65 + index)}</Label>
-              <Input id={`option-${index}`} name={`option${index}`} placeholder="Answer option" required />
+              <Input
+                id={`option-${index}`}
+                name={`option${index}`}
+                placeholder="Answer option"
+                required
+                defaultValue={initial?.options?.[index] ?? ""}
+              />
             </div>
           ))}
         </div>
@@ -867,13 +976,30 @@ function AddQuestionForm({
         ) : null}
         <div className="space-y-2">
           <Label htmlFor="question-points">Points</Label>
-          <Input id="question-points" name="points" type="number" min={1} max={100} required defaultValue={1} />
+          <Input
+            id="question-points"
+            name="points"
+            type="number"
+            min={1}
+            max={100}
+            required
+            defaultValue={initial?.points ?? 1}
+          />
         </div>
       </div>
       <DialogFooter showCloseButton={false}>
         <Button type="submit">
-          <Plus className="h-4 w-4" />
-          Add question
+          {isEdit ? (
+            <>
+              <Pencil className="h-4 w-4" />
+              Save changes
+            </>
+          ) : (
+            <>
+              <Plus className="h-4 w-4" />
+              Add question
+            </>
+          )}
         </Button>
       </DialogFooter>
     </form>

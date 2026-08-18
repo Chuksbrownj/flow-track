@@ -219,6 +219,10 @@ export default async function AssessmentsPage({
         type: question.type as "objective" | "multiple" | "written",
         prompt: question.prompt,
         options: question.options ? (JSON.parse(question.options) as string[]) : null,
+        correctOption: question.correctOption,
+        correctOptions: question.correctOptions
+          ? (JSON.parse(question.correctOptions) as number[])
+          : null,
         points: question.points,
       })),
       submissions,
