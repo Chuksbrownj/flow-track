@@ -3,17 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GraduationCap, Loader2, Search, Trophy } from "lucide-react";
+import { CalendarPlus, GraduationCap, Loader2, Search, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -22,8 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { saveAssessment, type AssessmentInput } from "@/lib/actions/assessments";
-import { formatWeek } from "@/lib/date";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { saveCourseScores, type CourseScoreInput } from "@/lib/actions/assessments";
+import { formatWeek, weekKey } from "@/lib/date";
 
 export type CourseOption = { id: string; name: string };
 
@@ -34,79 +28,62 @@ export type TraineeRow = {
   status: string;
 };
 
-/** Scores for a trainee keyed by course id. */
-export type ScoreRow = Record<string, number>;
+/** traineeId -> courseId -> week -> score */
+export type ScoreGrid = Record<string, Record<string, Record<string, number>>>;
 
-export type WeekOption = { value: string; label: string };
+const GRAND_TOTAL_TAB = "grand-total";
 
-/** Short header label, e.g. "Graphic Design" → "GD", "2D & 3D Animation" → "2D/3D". */
-function shortCourse(name: string): string {
-  const trimmed = name.trim();
-  if (/^2d/i.test(trimmed) || /^3d/i.test(trimmed)) return "2D/3D";
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return words
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("")
-    .slice(0, 3);
+/** Short column label, e.g. "2026-08-17" → "17 Aug". */
+function weekLabel(week: string): string {
+  const [y, m, d] = week.split("-").map(Number);
+  const date = new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, d ?? 1));
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-function emptyDraft(courses: CourseOption[]): Record<string, string> {
-  return Object.fromEntries(courses.map((course) => [course.id, ""]));
-}
-
-function draftFrom(row: ScoreRow | undefined, courses: CourseOption[]): Record<string, string> {
-  if (!row) return emptyDraft(courses);
-  return Object.fromEntries(
-    courses.map((course) => [course.id, row[course.id]?.toString() ?? ""])
-  );
-}
-
-function totals(draft: Record<string, string>, courses: CourseOption[]) {
-  let total = 0;
-  let entered = 0;
-  for (const course of courses) {
-    const raw = draft[course.id].trim();
-    if (raw === "") continue;
-    const num = Number(raw);
-    if (Number.isInteger(num)) {
-      total += num;
-      entered += 1;
-    }
-  }
-  return {
-    total,
-    percent: entered === 0 ? null : Math.round((total / courses.length) * 10) / 10,
-  };
+/** Parses a cell to a whole-number score (0–100), or null when blank/invalid. */
+function parseCell(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const num = Number(trimmed);
+  return Number.isInteger(num) && num >= 0 && num <= 100 ? num : null;
 }
 
 export function AssessmentsClient({
   trainees,
-  initialAssessments,
-  week,
-  weeks,
   courses,
+  weeks,
+  scores,
 }: {
   trainees: TraineeRow[];
-  /** Scores for the currently selected week, keyed by trainee id then course id. */
-  initialAssessments: Record<string, ScoreRow>;
-  /** Currently selected week (Monday of the week, YYYY-MM-DD). */
-  week: string;
-  /** Selectable weeks, newest first. */
-  weeks: WeekOption[];
-  /** Active courses — one score column per course. */
+  /** Active courses — one tab per course plus a grand-total tab. */
   courses: CourseOption[];
+  /** Weeks to show as columns, oldest first (current week is always included). */
+  weeks: string[];
+  /** Saved scores keyed by trainee id, then course id, then week. */
+  scores: ScoreGrid;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(() => {
-    const map: Record<string, Record<string, string>> = {};
-    for (const trainee of trainees) {
-      map[trainee.id] = draftFrom(initialAssessments[trainee.id], courses);
+  const [newWeek, setNewWeek] = useState("");
+  const [weekColumns, setWeekColumns] = useState<string[]>(weeks);
+  const [drafts, setDrafts] = useState<Record<string, Record<string, Record<string, string>>>>(
+    () => {
+      const map: Record<string, Record<string, Record<string, string>>> = {};
+      for (const [traineeId, courseMap] of Object.entries(scores)) {
+        const traineeDrafts: Record<string, Record<string, string>> = {};
+        for (const [courseId, weekMap] of Object.entries(courseMap)) {
+          const courseDrafts: Record<string, string> = {};
+          for (const [week, value] of Object.entries(weekMap)) {
+            courseDrafts[week] = String(value);
+          }
+          traineeDrafts[courseId] = courseDrafts;
+        }
+        map[traineeId] = traineeDrafts;
+      }
+      return map;
     }
-    return map;
-  });
-  const [savingId, setSavingId] = useState<string | null>(null);
+  );
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -119,39 +96,74 @@ export function AssessmentsClient({
     );
   }, [trainees, query]);
 
-  function setScore(traineeId: string, courseId: string, value: string) {
-    setDrafts((prev) => ({
-      ...prev,
-      [traineeId]: { ...prev[traineeId], [courseId]: value },
-    }));
+  function setScore(traineeId: string, courseId: string, week: string, value: string) {
+    setDrafts((prev) => {
+      const traineeDrafts = { ...(prev[traineeId] ?? {}) };
+      const courseDrafts = { ...(traineeDrafts[courseId] ?? {}) };
+      return {
+        ...prev,
+        [traineeId]: { ...traineeDrafts, [courseId]: { ...courseDrafts, [week]: value } },
+      };
+    });
   }
 
-  function handleSave(traineeId: string) {
-    const draft = drafts[traineeId];
-    if (!draft) return;
+  function addWeek() {
+    if (!newWeek) return;
+    const key = weekKey(newWeek);
+    setWeekColumns((prev) => (prev.includes(key) ? prev : [...prev, key].sort()));
+    setNewWeek("");
+  }
 
-    const scores: AssessmentInput = {};
-    let hasScore = false;
-    for (const course of courses) {
-      const raw = draft[course.id].trim();
-      if (raw === "") continue;
-      const num = Number(raw);
-      if (!Number.isInteger(num) || num < 0 || num > 100) {
-        toast.error(`${course.name} must be a whole number between 0 and 100.`);
-        return;
-      }
-      scores[course.id] = num;
-      hasScore = true;
+  function courseTotal(traineeId: string, courseId: string): number {
+    let total = 0;
+    for (const week of weekColumns) {
+      total += parseCell(drafts[traineeId]?.[courseId]?.[week] ?? "") ?? 0;
     }
-    if (!hasScore) {
+    return total;
+  }
+
+  function enteredCount(traineeId: string): number {
+    let count = 0;
+    for (const course of courses) {
+      for (const week of weekColumns) {
+        if (parseCell(drafts[traineeId]?.[course.id]?.[week] ?? "") !== null) count += 1;
+      }
+    }
+    return count;
+  }
+
+  function handleSave(traineeId: string, courseId: string) {
+    const hasValue = weekColumns.some(
+      (week) => parseCell(drafts[traineeId]?.[courseId]?.[week] ?? "") !== null
+    );
+    const hasExisting = weekColumns.some(
+      (week) => scores[traineeId]?.[courseId]?.[week] !== undefined
+    );
+    if (!hasValue && !hasExisting) {
       toast.error("Enter at least one score.");
       return;
     }
 
-    setSavingId(traineeId);
+    const input: CourseScoreInput = {};
+    for (const week of weekColumns) {
+      const raw = (drafts[traineeId]?.[courseId]?.[week] ?? "").trim();
+      if (raw === "") {
+        input[week] = null;
+        continue;
+      }
+      const num = Number(raw);
+      if (!Number.isInteger(num) || num < 0 || num > 100) {
+        toast.error(`${weekLabel(week)} must be a whole number between 0 and 100.`);
+        return;
+      }
+      input[week] = num;
+    }
+
+    const key = `${traineeId}:${courseId}`;
+    setSavingKey(key);
     startTransition(async () => {
-      const result = await saveAssessment(traineeId, week, scores);
-      setSavingId(null);
+      const result = await saveCourseScores(traineeId, courseId, input);
+      setSavingKey(null);
       if (result.ok) {
         toast.success("Scores saved.");
         router.refresh();
@@ -161,10 +173,7 @@ export function AssessmentsClient({
     });
   }
 
-  function changeWeek(next: string) {
-    if (!next || next === week) return;
-    router.push(`/assessments?tab=scores&week=${next}`);
-  }
+  const hasTrainees = trainees.length > 0;
 
   return (
     <div className="space-y-6">
@@ -172,49 +181,48 @@ export function AssessmentsClient({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Score sheet</h1>
           <p className="text-sm text-muted-foreground">
-            Weekly scores out of 100 per course. Grand total and percentage are calculated
-            automatically.
+            Each course has its own tab and every week is a column. The course total adds
+            up all weeks and the grand total sums all courses.
           </p>
         </div>
-        <div className="w-full sm:w-56">
-          <Select value={week} onValueChange={changeWeek}>
-            <SelectTrigger className="w-full" aria-label="Select week">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {weeks.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            value={newWeek}
+            onChange={(event) => setNewWeek(event.target.value)}
+            className="w-40"
+            aria-label="Week start date"
+          />
+          <Button variant="outline" size="sm" onClick={addWeek} className="gap-1.5">
+            <CalendarPlus className="h-4 w-4" />
+            Add week
+          </Button>
         </div>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name or OYA ID..."
+          className="pl-9"
+          aria-label="Search students"
+        />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GraduationCap className="h-5 w-5 text-primary" />
-            {formatWeek(week)}
+            Weekly scores
           </CardTitle>
           <CardDescription>
-            {filtered.length} of {trainees.length} students
+            {filtered.length} of {trainees.length} students · {weekColumns.length} weeks
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name or OYA ID..."
-              className="pl-9"
-              aria-label="Search students"
-            />
-          </div>
-
-          {trainees.length === 0 ? (
+          {!hasTrainees ? (
             <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-8 text-center">
               <GraduationCap className="h-6 w-6 text-muted-foreground" />
               <p className="text-sm font-medium">No students yet</p>
@@ -229,86 +237,145 @@ export function AssessmentsClient({
               <p className="text-xs text-muted-foreground">Try a different search.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <Table className="min-w-[720px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>OYA ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    {courses.map((course) => (
-                      <TableHead key={course.id} title={course.name}>
-                        {shortCourse(course.name)}
-                        <span className="block text-[10px] font-normal text-muted-foreground">
-                          /100
-                        </span>
-                      </TableHead>
-                    ))}
-                    <TableHead>Grand total</TableHead>
-                    <TableHead>Percentage</TableHead>
-                    <TableHead className="text-right">Save</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((trainee) => {
-                    const draft = drafts[trainee.id] ?? emptyDraft(courses);
-                    const { total, percent } = totals(draft, courses);
-                    const busy = savingId === trainee.id;
-                    return (
-                      <TableRow key={trainee.id}>
-                        <TableCell className="font-medium tabular-nums">
-                          {trainee.registrationNumber ?? "—"}
-                        </TableCell>
-                        <TableCell className="min-w-32">{trainee.fullName}</TableCell>
+            <Tabs defaultValue={courses[0]?.id ?? GRAND_TOTAL_TAB}>
+              <TabsList>
+                {courses.map((course) => (
+                  <TabsTrigger key={course.id} value={course.id}>
+                    {course.name}
+                  </TabsTrigger>
+                ))}
+                <TabsTrigger value={GRAND_TOTAL_TAB}>Grand total</TabsTrigger>
+              </TabsList>
+
+              {courses.map((course) => (
+                <TabsContent key={course.id} value={course.id} className="pt-4">
+                  <div className="overflow-x-auto rounded-lg border">
+                    <Table className="min-w-[560px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>OYA ID</TableHead>
+                          <TableHead>Name</TableHead>
+                          {weekColumns.map((week) => (
+                            <TableHead key={week} title={formatWeek(week)}>
+                              {weekLabel(week)}
+                              <span className="block text-[10px] font-normal text-muted-foreground">
+                                /100
+                              </span>
+                            </TableHead>
+                          ))}
+                          <TableHead>Course total</TableHead>
+                          <TableHead className="text-right">Save</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filtered.map((trainee) => {
+                          const busy = savingKey === `${trainee.id}:${course.id}`;
+                          return (
+                            <TableRow key={trainee.id}>
+                              <TableCell className="font-medium tabular-nums">
+                                {trainee.registrationNumber ?? "—"}
+                              </TableCell>
+                              <TableCell className="min-w-32">{trainee.fullName}</TableCell>
+                              {weekColumns.map((week) => (
+                                <TableCell key={week}>
+                                  <Input
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={0}
+                                    max={100}
+                                    placeholder="—"
+                                    aria-label={`${trainee.fullName} ${course.name} ${weekLabel(week)}`}
+                                    value={drafts[trainee.id]?.[course.id]?.[week] ?? ""}
+                                    onChange={(event) =>
+                                      setScore(trainee.id, course.id, week, event.target.value)
+                                    }
+                                    className="h-9 w-16"
+                                  />
+                                </TableCell>
+                              ))}
+                              <TableCell className="font-semibold tabular-nums">
+                                {courseTotal(trainee.id, course.id)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-primary"
+                                  disabled={busy}
+                                  onClick={() => handleSave(trainee.id, course.id)}
+                                >
+                                  {busy ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <GraduationCap className="h-4 w-4" />
+                                  )}
+                                  {busy ? "Saving..." : "Save"}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+              ))}
+
+              <TabsContent value={GRAND_TOTAL_TAB} className="pt-4">
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table className="min-w-[720px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>OYA ID</TableHead>
+                        <TableHead>Name</TableHead>
                         {courses.map((course) => (
-                          <TableCell key={course.id}>
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              max={100}
-                              placeholder="—"
-                              aria-label={`${trainee.fullName} ${course.name}`}
-                              value={draft[course.id]}
-                              onChange={(event) =>
-                                setScore(trainee.id, course.id, event.target.value)
-                              }
-                              className="h-9 w-16"
-                            />
-                          </TableCell>
+                          <TableHead key={course.id}>{course.name}</TableHead>
                         ))}
-                        <TableCell className="font-semibold tabular-nums">{total}</TableCell>
-                        <TableCell className="tabular-nums">
-                          {percent !== null ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-xs font-semibold text-gold-foreground">
-                              <Trophy className="h-3 w-3" />
-                              {percent}%
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-primary"
-                            disabled={busy}
-                            onClick={() => handleSave(trainee.id)}
-                          >
-                            {busy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <GraduationCap className="h-4 w-4" />
-                            )}
-                            {busy ? "Saving..." : "Save"}
-                          </Button>
-                        </TableCell>
+                        <TableHead>Grand total</TableHead>
+                        <TableHead>Average %</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((trainee) => {
+                        const totals = courses.map((course) =>
+                          courseTotal(trainee.id, course.id)
+                        );
+                        const grandTotal = totals.reduce((sum, value) => sum + value, 0);
+                        const entered = enteredCount(trainee.id);
+                        const percent =
+                          entered === 0 ? null : Math.round((grandTotal / entered) * 10) / 10;
+                        return (
+                          <TableRow key={trainee.id}>
+                            <TableCell className="font-medium tabular-nums">
+                              {trainee.registrationNumber ?? "—"}
+                            </TableCell>
+                            <TableCell className="min-w-32">{trainee.fullName}</TableCell>
+                            {totals.map((total, index) => (
+                              <TableCell key={courses[index]?.id} className="tabular-nums">
+                                {total}
+                              </TableCell>
+                            ))}
+                            <TableCell className="font-semibold tabular-nums">
+                              {grandTotal}
+                            </TableCell>
+                            <TableCell className="tabular-nums">
+                              {percent !== null ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-xs font-semibold text-gold-foreground">
+                                  <Trophy className="h-3 w-3" />
+                                  {percent}%
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
         </CardContent>
       </Card>

@@ -9,16 +9,14 @@ import {
   trainees,
   users,
 } from "@/db/schema";
-import { AssessmentsClient, type ScoreRow } from "@/components/assessments/assessments-client";
+import { AssessmentsClient } from "@/components/assessments/assessments-client";
 import { ExamsClient, type ExamListItem, type SubmissionRow } from "@/components/assessments/exams-client";
 import { TraineeExams, type TraineeExamRow } from "@/components/assessments/trainee-exams";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatWeek, weekKey } from "@/lib/date";
+import { weekKey } from "@/lib/date";
 import { listCourses } from "@/lib/courses";
 
 export const metadata = { title: "Assessments" };
-
-const WEEK_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function AssessmentsPage({
   searchParams,
@@ -118,7 +116,7 @@ export default async function AssessmentsPage({
   }
 
   // ─── Staff: exam management + weekly score sheet ────────────────────────
-  const { tab, week } = await searchParams;
+  const { tab } = await searchParams;
   const staffId = user.id ?? "";
   const isAdmin = user.role === "master_admin";
   const examWhere = isAdmin ? undefined : eq(exams.createdById, staffId);
@@ -231,7 +229,6 @@ export default async function AssessmentsPage({
 
   // ─── Weekly score sheet data ────────────────────────────────────────────
   const currentWeek = weekKey();
-  const selectedWeek = week && WEEK_PATTERN.test(week) ? week : currentWeek;
 
   const [weekRows, scoreTrainees, scoreRows] = await Promise.all([
     database
@@ -248,21 +245,20 @@ export default async function AssessmentsPage({
       .from(trainees)
       .where(ne(trainees.status, "pending"))
       .orderBy(asc(trainees.fullName)),
-    database
-      .select()
-      .from(assessmentScores)
-      .where(eq(assessmentScores.week, selectedWeek)),
+    database.select().from(assessmentScores),
   ]);
 
+  // Every week with a score, plus the current week (so there's always a column
+  // to enter this week's scores). Sorted oldest first.
   const weekSet = new Set<string>([currentWeek, ...weekRows.map((row) => row.week)]);
-  const weeks = [...weekSet].sort().reverse().map((value) => ({ value, label: formatWeek(value) }));
+  const weeks = [...weekSet].sort();
 
-  const initialAssessments: Record<string, ScoreRow> = {};
+  // traineeId -> courseId -> week -> score
+  const scores: Record<string, Record<string, Record<string, number>>> = {};
   for (const row of scoreRows) {
-    initialAssessments[row.traineeId] = {
-      ...(initialAssessments[row.traineeId] ?? {}),
-      [row.courseId]: row.score,
-    };
+    const traineeScores = (scores[row.traineeId] ??= {});
+    const courseScores = (traineeScores[row.courseId] ??= {});
+    courseScores[row.week] = row.score;
   }
 
   return (
@@ -291,12 +287,10 @@ export default async function AssessmentsPage({
         </TabsContent>
         <TabsContent value="scores" className="pt-4">
           <AssessmentsClient
-            key={selectedWeek}
             trainees={scoreTrainees}
-            initialAssessments={initialAssessments}
-            week={selectedWeek}
-            weeks={weeks}
             courses={courseList}
+            weeks={weeks}
+            scores={scores}
           />
         </TabsContent>
       </Tabs>
