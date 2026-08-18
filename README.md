@@ -92,6 +92,16 @@ Only a Master Admin can promote an Admin to Master Admin.
 | `BREVO_API_KEY` | Brevo API key for password reset / credentials emails |
 | `BREVO_FROM_EMAIL` / `BREVO_FROM_NAME` | Sender details for Brevo emails |
 
+> **Admin sign-in note** — the master admin logs in at `/admin/login` with
+> the `ADMIN_EMAIL` / `ADMIN_PASSWORD` values (in `.env.local` locally).
+> Special characters are part of the password (don't trim them), and it is
+> case-sensitive. Seeding only creates the account when it doesn't already
+> exist, so changing `ADMIN_PASSWORD` in `.env.local` later does **not**
+> update an existing admin's password — use the app's password reset or
+> update the hash in the database instead. If login is rejected with "too
+> many attempts", wait out the 15-minute rate-limit window; the counter
+> resets automatically once the window expires.
+
 ### Vercel (free tier)
 
 1. Push the repository to GitHub and import it into Vercel.
