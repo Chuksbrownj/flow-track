@@ -26,11 +26,19 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
     fullName: value(formData, "fullName"),
     gender: value(formData, "gender"),
     phone: value(formData, "phone"),
-    email: value(formData, "email"),
+    email: value(formData, "email").toLowerCase(),
   };
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
   const validationError = validateTrainee(input);
   if (validationError) return { ok: false, error: validationError };
+
+  // The password becomes the trainee's login credential (registration number
+  // or email + this password), so it is required when an admin creates them.
+  const passwordError = validatePassword(password);
+  if (passwordError) return { ok: false, error: passwordError };
+  if (password !== confirmPassword) return { ok: false, error: "Passwords do not match." };
 
   const registrationNumber = input.registrationNumber.toUpperCase();
   const [existing] = await db()
@@ -42,11 +50,38 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "A trainee with this registration number already exists." };
   }
 
+  // The email must be unique across all accounts (staff and students).
+  if (input.email) {
+    const [emailCollision] = await db()
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.email))
+      .limit(1);
+    if (emailCollision) {
+      return { ok: false, error: "This email is already in use by another account." };
+    }
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  let createdUserId: string | null = null;
   let createdId: string | null = null;
   try {
+    // Create the login account first, then link the trainee record to it.
+    const [createdUser] = await db()
+      .insert(users)
+      .values({
+        name: input.fullName,
+        email: input.email || null,
+        passwordHash,
+        role: "student",
+      })
+      .returning({ id: users.id });
+    createdUserId = createdUser.id;
+
     const [created] = await db()
       .insert(trainees)
       .values({
+        userId: createdUser.id,
         registrationNumber,
         fullName: input.fullName,
         gender: input.gender,
@@ -57,6 +92,10 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
       .returning({ id: trainees.id });
     createdId = created.id;
   } catch {
+    // Roll back the account if the trainee insert failed.
+    if (createdUserId) {
+      await db().delete(users).where(eq(users.id, createdUserId)).catch(() => {});
+    }
     return { ok: false, error: "Could not add the trainee. Try again." };
   }
 

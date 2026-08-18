@@ -41,6 +41,7 @@ export function TraineeForm({
   const [error, setError] = useState<string | null>(null);
   const [gender, setGender] = useState(trainee?.gender ?? "");
   const [masterPassword, setMasterPassword] = useState("");
+  const [password, setPassword] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -130,6 +131,38 @@ export function TraineeForm({
           defaultValue={trainee?.email ?? ""}
         />
       </div>
+      {mode === "create" ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <PasswordInput
+              id="password"
+              name="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              maxLength={128}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <PasswordInput
+              id="confirmPassword"
+              name="confirmPassword"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              maxLength={128}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The trainee signs in with their registration number (or email) and this password.
+          </p>
+        </>
+      ) : null}
       {mode === "edit" ? (
         <div className="space-y-2">
           <Label htmlFor="masterPassword">Master admin password</Label>
