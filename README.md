@@ -70,7 +70,7 @@ Only a Master Admin can promote an Admin to Master Admin.
 - **Student accounts** — students register with registration code, name, gender and password (no email needed at signup; they add email/phone from their profile). They sign in with their registration code.
 - **Roles** — Student, Admin (Trainer), Master Admin, with admin→master-admin promotion.
 - **Attendance** — taken only on Mondays, Wednesdays and Fridays. Students self check-in (submission is *pending*), admins approve or reject, and admins can mark/override any student. Students not marked present by end of a training day are auto-marked absent.
-- **Weekly score sheet** — admins enter scores out of 100 per programme area (Graphic Design, Data Analysis, 2D/3D Animation, HP LIFE); grand total and percentage are calculated automatically.
+- **Weekly score sheet** — one tab per programme course plus a **Grand total** tab. Each course tab shows every week as its own column (admins can add or backfill weeks), with a per-row **Save** and a **Course total** that sums all weeks. The **Grand total** tab adds up every course and shows an **Average %**.
 - **Exams** — timed online exams per programme area (separate from the score sheet).
 - **Training schedule** — sessions with an optional Google Form link per day so students submit work externally.
 - **Audit log** — every data-changing action is logged with who, what and when. Admins see student actions; master admins see everything.
@@ -80,10 +80,19 @@ Only a Master Admin can promote an Admin to Master Admin.
 ## Tests
 
 - `npm test` — unit tests (vitest). No database needed.
-- `npm run test:integration` — login rate-limit integration tests against a
-  real PostgreSQL database. Uses `DATABASE_URL` (loaded from `.env.local`) and
-  is skipped when it isn't set. Creates only uniquely-prefixed `rate_limits`
-  rows and deletes them afterwards.
+- `npm run test:integration` — integration tests against a real PostgreSQL
+  database (Neon). Uses `DATABASE_URL` (loaded from `.env.local`); the
+  rate-limit tests skip when it isn't set, the others require it. Covers the
+  login rate-limit flow, the admin-created trainee login accounts, and exam
+  question editing across draft/open/closed states. Each test cleans up the
+  rows it creates.
+
+Both suites run in CI (`.github/workflows/ci.yml`). The integration job
+provisions a throwaway Neon branch, applies migrations, runs
+`npm run test:integration`, and deletes the branch afterwards. It needs
+`NEON_API_KEY` (repository secret) and `NEON_PROJECT_ID` (repository variable);
+installing the [Neon GitHub Integration](https://neon.com/docs/guides/github-integration)
+sets both automatically.
 
 ## Deployment
 
