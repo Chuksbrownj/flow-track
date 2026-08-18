@@ -160,6 +160,21 @@ export function TraineeForm({
               maxLength={128}
             />
           </div>
+          <label className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm">
+            <input
+              type="checkbox"
+              name="sendWelcomeEmail"
+              className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]"
+              defaultChecked
+            />
+            <span>
+              <span className="font-medium">Send the trainee a welcome email</span>
+              <span className="block text-xs text-muted-foreground">
+                Includes their registration number and sign-in password. Requires an email address
+                above.
+              </span>
+            </span>
+          </label>
           <p className="text-xs text-muted-foreground">
             The trainee signs in with their registration number (or email) and this password.
           </p>

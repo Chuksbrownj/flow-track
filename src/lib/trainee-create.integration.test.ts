@@ -84,6 +84,7 @@ describe("admin-created trainee login flow (real DB)", () => {
     fd.set("email", email);
     fd.set("password", password);
     fd.set("confirmPassword", password);
+    fd.set("sendWelcomeEmail", "on");
 
     const result = await createTrainee(fd);
     expect(result.ok).toBe(true);
@@ -122,6 +123,39 @@ describe("admin-created trainee login flow (real DB)", () => {
       email,
       password
     );
+  });
+
+  it("does not email when the welcome email is not opted in", async () => {
+    const fd = new FormData();
+    fd.set("registrationNumber", reg);
+    fd.set("fullName", "No Email Trainee");
+    fd.set("gender", "Male");
+    fd.set("phone", "08033333333");
+    fd.set("email", email);
+    fd.set("password", password);
+    fd.set("confirmPassword", password);
+    // sendWelcomeEmail intentionally omitted.
+
+    const result = await createTrainee(fd);
+    expect(result.ok).toBe(true);
+    expect(sendStudentCredentialsEmail).not.toHaveBeenCalled();
+  });
+
+  it("errors when the welcome email is opted in without an email address", async () => {
+    const fd = new FormData();
+    fd.set("registrationNumber", reg);
+    fd.set("fullName", "No Email Trainee");
+    fd.set("gender", "Male");
+    fd.set("phone", "08033333333");
+    fd.set("email", "");
+    fd.set("password", password);
+    fd.set("confirmPassword", password);
+    fd.set("sendWelcomeEmail", "on");
+
+    const result = await createTrainee(fd);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Add an email address to send the welcome email to.");
+    expect(sendStudentCredentialsEmail).not.toHaveBeenCalled();
   });
 
   it("edit flow creates an account for an accountless trainee", async () => {

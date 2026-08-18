@@ -30,6 +30,7 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
   };
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const sendWelcomeEmail = formData.get("sendWelcomeEmail") === "on";
 
   const validationError = validateTrainee(input);
   if (validationError) return { ok: false, error: validationError };
@@ -39,6 +40,9 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
   const passwordError = validatePassword(password);
   if (passwordError) return { ok: false, error: passwordError };
   if (password !== confirmPassword) return { ok: false, error: "Passwords do not match." };
+  if (sendWelcomeEmail && !input.email) {
+    return { ok: false, error: "Add an email address to send the welcome email to." };
+  }
 
   const registrationNumber = input.registrationNumber.toUpperCase();
   const [existing] = await db()
@@ -117,9 +121,10 @@ export async function createTrainee(formData: FormData): Promise<ActionResult> {
     });
   }
 
-  // Email the sign-in details to the trainee. Best-effort: a missing Brevo
-  // key or a failed send must never block the trainee from being created.
-  if (input.email) {
+  // Email the sign-in details to the trainee when the admin opted in.
+  // Best-effort: a missing Brevo key or failed send must never block the
+  // trainee from being created.
+  if (sendWelcomeEmail && input.email) {
     await sendStudentCredentialsEmail(
       input.email,
       input.fullName,
