@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   Download,
+  Eye,
   FileUp,
   GraduationCap,
   KeyRound,
@@ -175,6 +176,7 @@ export function ExamsClient({
     fileName: string;
     questions: ImportedQuestion[];
   } | null>(null);
+  const [previewSavedTarget, setPreviewSavedTarget] = useState<ExamListItem | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -319,6 +321,17 @@ export function ExamsClient({
                       >
                         <Plus className="h-4 w-4" />
                         Add question
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={exam.questionCount === 0}
+                        title="Preview the questions saved in this exam"
+                        onClick={() => setPreviewSavedTarget(exam)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        Preview
                       </Button>
                       {exam.status === "draft" ? (
                         <Button
@@ -589,6 +602,18 @@ export function ExamsClient({
               onSubmit={(grades) =>
                 run(gradeTarget.submission.id, () => gradeWritten(gradeTarget.submission.id, grades))
               }
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewSavedTarget !== null} onOpenChange={(open) => !open && setPreviewSavedTarget(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          {previewSavedTarget ? (
+            <SavedQuestionsPreviewDialog
+              key={previewSavedTarget.id}
+              exam={previewSavedTarget}
+              onClose={() => setPreviewSavedTarget(null)}
             />
           ) : null}
         </DialogContent>
@@ -914,10 +939,82 @@ function UploadQuestionsButton({
 }
 
 /** Returns true when the given option index is part of the question's answer key. */
-function isCorrectOption(question: ImportedQuestion, optionIndex: number): boolean {
+function isCorrectOption(
+  question: Pick<ImportedQuestion, "type" | "correctOption" | "correctOptions">,
+  optionIndex: number
+): boolean {
   if (question.type === "objective") return question.correctOption === optionIndex;
   if (question.type === "multiple") return question.correctOptions?.includes(optionIndex) ?? false;
   return false;
+}
+
+/**
+ * Read-only preview of the questions currently saved in an exam, with their
+ * answer keys. Always available from the exam card — no file re-upload needed.
+ */
+function SavedQuestionsPreviewDialog({
+  exam,
+  onClose,
+}: {
+  exam: ExamListItem;
+  onClose: () => void;
+}) {
+  const questions = exam.questions;
+  const typeLabel = (type: QuestionRow["type"]) =>
+    type === "written" ? "Written" : type === "multiple" ? "Multiple answer" : "Objective";
+
+  return (
+    <div className="space-y-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Eye className="h-4 w-4 text-primary" />
+          Preview questions
+        </DialogTitle>
+        <DialogDescription>
+          &quot;{exam.title}&quot; — {questions.length} question{questions.length === 1 ? "" : "s"} saved.
+          The marked options are the answer key used for auto-grading.
+        </DialogDescription>
+      </DialogHeader>
+      {questions.length === 0 ? (
+        <p className="rounded-lg border bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">
+          No questions saved yet.
+        </p>
+      ) : (
+        <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
+          {questions.map((question, index) => (
+            <li key={question.id} className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">
+                  {index + 1}. {question.prompt}
+                </span>
+                <Badge variant="secondary">{typeLabel(question.type)}</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {question.points} pt{question.points === 1 ? "" : "s"}
+                </span>
+              </div>
+              {question.options ? (
+                <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                  {question.options.map((option, optionIndex) => (
+                    <li key={optionIndex}>
+                      {String.fromCharCode(65 + optionIndex)}. {option}
+                      {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <DialogFooter showCloseButton={false}>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </DialogFooter>
+    </div>
+  );
 }
 
 /**
