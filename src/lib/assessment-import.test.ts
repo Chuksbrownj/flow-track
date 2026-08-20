@@ -406,14 +406,20 @@ describe("parseQuestionFile — Word (.docx)", () => {
   });
 });
 
-/** Builds a small PDF with one text line per entry (via pdf-lib). */
+/**
+ * Builds a PDF with one text line per entry (via pdf-lib). Long papers span
+ * multiple pages (~25 lines each) so text is never drawn off-page.
+ */
 async function pdfFile(lines: string[], name = "questions.pdf"): Promise<File> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const page = doc.addPage([612, 792]);
-  lines.forEach((line, index) => {
-    page.drawText(line, { x: 50, y: 740 - index * 24, size: 14, font });
-  });
+  const linesPerPage = 25;
+  for (let start = 0; start < lines.length; start += linesPerPage) {
+    const page = doc.addPage([612, 792]);
+    lines.slice(start, start + linesPerPage).forEach((line, index) => {
+      page.drawText(line, { x: 50, y: 740 - index * 24, size: 14, font });
+    });
+  }
   const bytes = await doc.save();
   return new File([bufferToArrayBuffer(bytes as unknown as Buffer)], name);
 }
@@ -662,6 +668,87 @@ describe("parseQuestionFile — document structure is skipped", () => {
       errors: ["No valid questions found in the document."],
     });
   });
+
+  it("parses a paper with more than 12 questions (up to 100)", async () => {
+    const lines = [
+      "MODULE 1 EXAMINATION",
+      "INSTRUCTIONS TO CANDIDATES",
+      "1. Answer ALL questions.",
+      "2. Use blue or black pen.",
+      "SECTION A: OBJECTIVE QUESTIONS",
+    ];
+    for (let i = 1; i <= 60; i += 1) {
+      lines.push(`${i}. What is the answer to question ${i}?`);
+      lines.push("A) Alpha");
+      lines.push("B) Beta");
+      lines.push("C) Gamma");
+      lines.push("D) Delta");
+      lines.push(`Answer: ${String.fromCharCode(64 + ((i % 4) + 1))}`);
+    }
+    lines.push("THE END");
+
+    const result = await parseQuestionFile(new File([lines.join("\n")], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(60);
+    // The paper's own numbering is stripped, not duplicated in the preview.
+    expect(result.questions?.[59]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 60?",
+    });
+  });
+
+  it("does not truncate the paper at mid-paper instruction lines", async () => {
+    const lines = ["SECTION A: MULTIPLE CHOICE"];
+    for (let i = 1; i <= 12; i += 1) {
+      lines.push(`${i}. Question ${i}?`);
+      lines.push("A) One");
+      lines.push("B) Two");
+      lines.push(`Answer: ${i % 2 === 0 ? "B" : "A"}`);
+    }
+    lines.push("SECTION B — THEORY");
+    lines.push("Answer any THREE questions.");
+    lines.push("Answer three (3) questions from this section.");
+    for (let i = 13; i <= 20; i += 1) {
+      lines.push(`${i}. Explain question ${i}.`);
+    }
+
+    const result = await parseQuestionFile(new File([lines.join("\n")], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(20);
+  });
+
+  it("drops instruction lines instead of importing them as numbered questions", async () => {
+    const content = [
+      "Use blue or black pen.",
+      "Write your name on the answer booklet.",
+      "Answer three (3) questions from this section.",
+      "Answer any THREE questions.",
+      "Answer ALL questions in the spaces provided.",
+      "1. Answer all questions in this section.",
+      "2. Use only a blue pen.",
+      "All answers must be written in ink.",
+      "This question paper has two sections.",
+      "What is the capital of France?",
+      "A) Paris",
+      "B) London",
+      "Answer: A",
+      "Which is red?",
+      "A) Apple",
+      "B) Banana",
+      "Answer: A",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions).toEqual([
+      expect.objectContaining({ prompt: "What is the capital of France?" }),
+      expect.objectContaining({ prompt: "Which is red?" }),
+    ]);
+  });
 });
 
 describe("parseQuestionFile — HTML", () => {
@@ -846,6 +933,135 @@ describe("parseQuestionFile — trailing answer key", () => {
     expect(result.imported).toBe(1);
     expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
   });
+
+  it("applies a compact key without a colon (single line, dashes)", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWERS 1-B, 2-C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
+
+  it("applies a compact key without a colon (single line, dotted entries)", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWERS 1. B 2. C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
+
+  it("applies a one-line key with a colon (multiple answers)", async () => {
+    const content = [
+      "1. Which of these are primary colours?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "Answers: 1-A,C, 2-B",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "multiple", correctOptions: [0, 2] });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 1 });
+  });
+
+  it("does not mistake instruction sentences for answer keys and still applies a real key", async () => {
+    const content = [
+      "Answer ALL questions.",
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWER KEY",
+      "1. B",
+      "2. C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
+
+  it("keeps inline answers and does not apply the key to those questions", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: A",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWERS 1-B, 2-C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 0 }); // inline wins
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
 });
 
 describe("parseQuestionFile — PDF", () => {
@@ -903,6 +1119,74 @@ describe("parseQuestionFile — Word (.doc)", () => {
     expect(result).toEqual({
       ok: false,
       errors: ["Could not read the Word document. Make sure it is a valid .doc file."],
+    });
+  });
+});
+
+/**
+ * Lines of a realistic 100-question paper: headers and numbered instructions
+ * up front (which must be dropped), then 100 numbered objective questions.
+ */
+function hundredQuestionPaperLines(): string[] {
+  const lines = [
+    "MODULE 1 EXAMINATION",
+    "INSTRUCTIONS TO CANDIDATES",
+    "1. Answer ALL questions.",
+    "2. Use blue or black pen.",
+    "SECTION A: OBJECTIVE QUESTIONS",
+  ];
+  for (let i = 1; i <= 100; i += 1) {
+    lines.push(`${i}. What is the answer to question ${i}?`);
+    lines.push("A) Alpha");
+    lines.push("B) Beta");
+    lines.push("C) Gamma");
+    lines.push("D) Delta");
+    lines.push(`Answer: ${String.fromCharCode(64 + ((i % 4) + 1))}`);
+  }
+  lines.push("THE END");
+  return lines;
+}
+
+describe("parseQuestionFile — large papers (100 questions)", () => {
+  it("parses a 100-question .docx paper end to end", async () => {
+    // One paragraph per line, like a standard Word document.
+    const file = await docxFile(hundredQuestionPaperLines());
+    const result = await parseQuestionFile(file);
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(100);
+    expect(result.questions).toHaveLength(100);
+    // Headers and instructions are dropped — only real questions come through.
+    expect(result.questions?.every((question) => question.type === "objective")).toBe(true);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 1?", // paper numbering stripped
+      options: ["Alpha", "Beta", "Gamma", "Delta"],
+      correctOption: 1, // B
+    });
+    expect(result.questions?.[99]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 100?",
+      correctOption: 0, // A
+    });
+  });
+
+  it("parses a 100-question .pdf paper end to end", async () => {
+    const file = await pdfFile(hundredQuestionPaperLines());
+    const result = await parseQuestionFile(file);
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(100);
+    expect(result.questions).toHaveLength(100);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 1?",
+      correctOption: 1, // B
+    });
+    expect(result.questions?.[99]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 100?",
+      correctOption: 0, // A
     });
   });
 });

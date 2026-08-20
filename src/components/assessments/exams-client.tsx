@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   Clock3,
@@ -15,7 +16,9 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Search,
   ShieldCheck,
+  Square,
   Trash2,
   Users,
   XCircle,
@@ -913,8 +916,8 @@ function isCorrectOption(question: ImportedQuestion, optionIndex: number): boole
 
 /**
  * The review step shown after a question file is parsed: the admin sees every
- * question with its answer key, can edit or drop misread rows inline, then
- * imports the remaining questions.
+ * question with its answer key, can search and filter, edit or drop misread
+ * rows (individually or in bulk), then imports the remaining questions.
  */
 function PreviewQuestionsDialog({
   exam,
@@ -938,7 +941,60 @@ function PreviewQuestionsDialog({
   // Only one row can be edited at a time; the other rows are locked so the
   // index that identifies the row being edited can't shift under it.
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | ImportedQuestion["type"]>("all");
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const editing = editingIndex !== null;
+
+  // Entries keep their position in the full list, so numbering, editing and
+  // removal always target the right question even while the list is filtered.
+  // Changing the search/type filter closes the open inline editor so a
+  // filtered-out row can never leave the dialog stuck in edit mode.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return questions
+      .map((question, index) => ({ question, index }))
+      .filter(({ question }) => {
+        if (typeFilter !== "all" && question.type !== typeFilter) return false;
+        if (q === "") return true;
+        const haystack = [question.prompt, ...(question.options ?? [])].join(" ").toLowerCase();
+        return haystack.includes(q);
+      });
+  }, [questions, query, typeFilter]);
+
+  const selectedCount = selected.size;
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((entry) => selected.has(entry.index));
+
+  function toggleSelected(index: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (filtered.every((entry) => next.has(entry.index))) {
+        filtered.forEach((entry) => next.delete(entry.index));
+      } else {
+        filtered.forEach((entry) => next.add(entry.index));
+      }
+      return next;
+    });
+  }
+
+  function removeSelected() {
+    if (selected.size === 0) return;
+    // Remove in descending index order so earlier indexes stay valid as the
+    // list shrinks (the parent filters by index on each removal).
+    [...selected].sort((a, b) => b - a).forEach((index) => onRemove(index));
+    setSelected(new Set());
+    setEditingIndex(null);
+  }
 
   const typeLabel = (type: ImportedQuestion["type"]) =>
     type === "written" ? "Written" : type === "multiple" ? "Multiple answer" : "Objective";
@@ -968,72 +1024,160 @@ function PreviewQuestionsDialog({
           No questions left to import.
         </p>
       ) : (
-        <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
-          {questions.map((question, index) =>
-            index === editingIndex ? (
-              <li key={index} className="rounded-lg border p-3">
-                <InlineQuestionEditor
-                  initial={question}
-                  onSave={(updated) => {
-                    onEdit(index, updated);
-                    setEditingIndex(null);
-                  }}
-                  onCancel={() => setEditingIndex(null)}
-                />
-              </li>
-            ) : (
-              <li key={index} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium">
-                        {index + 1}. {question.prompt}
-                      </span>
-                      <Badge variant="secondary">{typeLabel(question.type)}</Badge>
-                      <span className="text-xs text-muted-foreground">{pointsLabel(question.points)}</span>
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-40 flex-1">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setEditingIndex(null);
+                }}
+                placeholder="Search questions..."
+                className="pl-8"
+                aria-label="Search questions"
+              />
+            </div>
+            <Select
+              value={typeFilter}
+              onValueChange={(value) => {
+                setTypeFilter(value as "all" | ImportedQuestion["type"]);
+                setEditingIndex(null);
+              }}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="objective">Objective</SelectItem>
+                <SelectItem value="multiple">Multiple answer</SelectItem>
+                <SelectItem value="written">Written</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={filtered.length === 0}
+              onClick={toggleSelectAll}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              {allFilteredSelected ? "Clear selection" : "Select all"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive"
+              disabled={selectedCount === 0 || editing}
+              onClick={removeSelected}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove selected ({selectedCount})
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Showing {filtered.length} of {questions.length} question
+            {questions.length === 1 ? "" : "s"}
+            {selectedCount > 0 ? ` · ${selectedCount} selected` : ""}
+          </p>
+
+          {filtered.length === 0 ? (
+            <p className="rounded-lg border bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">
+              No questions match your search.
+            </p>
+          ) : (
+            <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {filtered.map(({ question, index }) =>
+                index === editingIndex ? (
+                  <li key={index} className="rounded-lg border p-3">
+                    <InlineQuestionEditor
+                      initial={question}
+                      onSave={(updated) => {
+                        onEdit(index, updated);
+                        setEditingIndex(null);
+                      }}
+                      onCancel={() => setEditingIndex(null)}
+                    />
+                  </li>
+                ) : (
+                  <li key={index} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-start gap-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={`mt-0.5 h-7 w-7 shrink-0 ${
+                            selected.has(index) ? "text-primary" : "text-muted-foreground"
+                          }`}
+                          title={selected.has(index) ? "Deselect question" : "Select question"}
+                          aria-pressed={selected.has(index)}
+                          disabled={editing}
+                          onClick={() => toggleSelected(index)}
+                        >
+                          {selected.has(index) ? (
+                            <CheckSquare className="h-4 w-4" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium">
+                              {index + 1}. {question.prompt}
+                            </span>
+                            <Badge variant="secondary">{typeLabel(question.type)}</Badge>
+                            <span className="text-xs text-muted-foreground">{pointsLabel(question.points)}</span>
+                          </div>
+                          {question.options ? (
+                            <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                              {question.options.map((option, optionIndex) => (
+                                <li key={optionIndex}>
+                                  {String.fromCharCode(65 + optionIndex)}. {option}
+                                  {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground"
+                          title="Edit question"
+                          disabled={editing}
+                          onClick={() => setEditingIndex(index)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          title="Remove question"
+                          disabled={editing}
+                          onClick={() => onRemove(index)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                    {question.options ? (
-                      <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                        {question.options.map((option, optionIndex) => (
-                          <li key={optionIndex}>
-                            {String.fromCharCode(65 + optionIndex)}. {option}
-                            {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground"
-                      title="Edit question"
-                      disabled={editing}
-                      onClick={() => setEditingIndex(index)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive"
-                      title="Remove question"
-                      disabled={editing}
-                      onClick={() => onRemove(index)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </li>
-            )
+                  </li>
+                )
+              )}
+            </ul>
           )}
-        </ul>
+        </>
       )}
 
       <DialogFooter showCloseButton={false}>

@@ -423,9 +423,18 @@ export function parseQuestionText(text: string): ImportResult {
 
     // Titles, section headers and instruction lines are document structure,
     // not questions — don't let them become spurious written questions.
+    // Instructions are often numbered in the paper ("1. Answer ALL
+    // questions."), so the question-number prefix is stripped before the
+    // header/label/title checks; the stored prompt is stripped later anyway.
+    const withoutNumber = (line: string) => {
+      const match = QUESTION_NUMBER.exec(line);
+      return match ? line.slice(match[0].length).trim() : line;
+    };
     const promptLines = promptCandidates.filter(
       ({ line, lineIndex }) =>
-        !isHeaderLine(line) && !isLabelLine(line) && !isOpeningTitle(line, blockIndex, lineIndex)
+        !isHeaderLine(withoutNumber(line)) &&
+        !isLabelLine(withoutNumber(line)) &&
+        !isOpeningTitle(withoutNumber(line), blockIndex, lineIndex)
     );
 
     let prompt: string | null = null;
@@ -572,9 +581,15 @@ function isAnswerKeyHeader(line: string): boolean {
   const separator = match[1];
   const letter = match[2] ?? "";
   const rest = match[3] ?? "";
-  // "Answer the following questions." — an instruction, not a key header: no
-  // separator and free-text after the keyword.
-  if (separator === "" && letter === "" && rest.trim() !== "") return false;
+  // "Answer the following questions." / "Answer ALL questions." / "Answer
+  // any THREE questions." — instructions, not key headers: no separator and
+  // free text after the keyword. The letter group can grab the first letter
+  // of that free text ("Answer all questions." → "A"), so without a
+  // separator only a compact key ("ANSWERS 1-B, 2-C") is a key header — it
+  // starts with a numbered answer entry. Anything else is an instruction.
+  if (separator === "" && (letter + rest).trim() !== "") {
+    return /^\d{1,3}\s*[-.):.]?\s*[A-Fa-f]\b/.test((letter + rest).trim());
+  }
   // "Answer: B", "Answer: A,C" and "Answer: A and C" are inline answers for
   // the previous question — the remainder after the colon is nothing but
   // answer letters and separators. Real key headers carry numbers, question
@@ -648,8 +663,23 @@ function isHeaderLine(line: string): boolean {
 
   // Unambiguous instruction phrases — never questions.
   if (/^(?:answer|attempt|choose)\s+(?:all|any)\b/i.test(text)) return true;
+  // "Answer any THREE questions." / "Answer three (3) questions from this
+  // section." / "Attempt any two questions."
+  if (
+    /^(?:answer|attempt|choose)\s+(?:any\s+)?(?:all\s+the\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*(?:\(\d+\))?\s+questions?\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
   if (/^(?:instructions?|duration|time\s+allowed|total\s+marks?|maximum\s+marks?)\b/i.test(text)) return true;
   if (/^(?:the end|end of (?:the )?(?:paper|examination|exam|test)|good luck)\b/i.test(text)) return true;
+  // "Use blue or black pen." / "Use an HB pencil." — materials instructions.
+  if (/^use\s+(?:only\s+)?(?:a|an|blue|black|dark|red|green|ballpoint|biro|pencil|ink)\b/i.test(text)) return true;
+  // "All answers must be written in ink." / "All work must be shown."
+  if (/^all\s+(?:answers?|work|questions?)\b/i.test(text)) return true;
+  // "Write your name on the answer booklet."
+  if (/^write\s+your\s+(?:name|full\s+name|registration\s+number|index\s+number)\b/i.test(text)) return true;
 
   // Full instruction sentences that are never questions ("For each question,
   // choose the best answer.", "Read the questions carefully.", …).
@@ -657,7 +687,7 @@ function isHeaderLine(line: string): boolean {
     /^(?:for|in)\s+(?:each|every)\s+question\b/i.test(text) ||
     /^(?:choose|select|pick|circle|underline)\s+(?:the\s+)?(?:best|most\s+appropriate|correct|right|answer|option|alternative)\b/i.test(text) ||
     /^(?:answer|attempt|write)\s+(?:the\s+)?(?:following\s+)?(?:questions?|items?)\b/i.test(text) ||
-    /^(?:this|the)\s+(?:exam|examination|test|paper|assessment|quiz)\s+(?:consists|comprises|has|contains|is\s+divided)\b/i.test(text) ||
+    /^(?:this|the)\s+(?:question\s+)?(?:exam|examination|test|paper|assessment|quiz)\s+(?:consists|comprises|has|contains|is\s+divided)\b/i.test(text) ||
     /^(?:each|every|all)\s+questions?\s+(?:carries|carry|are\s+worth|is\s+worth|worth)\b/i.test(text) ||
     /^(?:read|study)\s+(?:the\s+)?(?:questions?|instructions?|passage)\b/i.test(text) ||
     /^(?:write|provide|give)\s+your\s+(?:answers?|responses?)\b/i.test(text) ||
