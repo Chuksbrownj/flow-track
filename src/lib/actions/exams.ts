@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { examQuestions, exams, examSubmissions, notifications, trainees, users } from "@/db/schema";
@@ -13,7 +14,7 @@ import {
 } from "@/lib/assessment-import";
 import { isUuid } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
-import { sanitizeLlmGrades, suggestWrittenGrades } from "@/lib/llm-grading";
+import { suggestWrittenGradesInBackground } from "@/lib/llm-grading";
 import { sendExamAvailableEmail } from "@/lib/email";
 
 export type ActionResult = { ok: boolean; error?: string; message?: string };
@@ -918,14 +919,12 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
   );
   const percent = hasAutoGradable ? percentOf(autoScore, submission.totalPoints) : null;
 
-  // FEAT-06: first-pass LLM suggestion for written questions. Best-effort — if
-  // no GEMINI_API_KEY is set or the call fails, the trainer grades manually.
-  let llmGrades: Record<string, number> | null = null;
+  // FEAT-06: first-pass LLM suggestion for written questions. Grading runs in
+  // the background AFTER this response is sent (via `after()`), so the submit
+  // path never waits on the LLM — under load, submissions stay instant and the
+  // suggestions appear in the trainer's review dialog moments later. Best
+  // effort: if the LLM is unavailable the trainer grades manually.
   const writtenQuestions = questionRows.filter((question) => question.type === "written");
-  if (writtenQuestions.length > 0) {
-    const raw = await suggestWrittenGrades(writtenQuestions, answers);
-    llmGrades = sanitizeLlmGrades(raw, writtenQuestions);
-  }
 
   try {
     await db()
@@ -935,11 +934,18 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
         submittedAt: new Date(),
         answers: JSON.stringify(answers),
         autoScore,
-        llmGrades: llmGrades ? JSON.stringify(llmGrades) : null,
       })
       .where(eq(examSubmissions.id, submission.id));
   } catch {
     return { ok: false, error: "Could not submit the exam. Try again." };
+  }
+
+  if (writtenQuestions.length > 0) {
+    const submissionId = submission.id;
+    const answerSnapshot = { ...answers };
+    after(() =>
+      suggestWrittenGradesInBackground(submissionId, writtenQuestions, answerSnapshot)
+    );
   }
 
   revalidatePath("/assessments");
@@ -1031,7 +1037,7 @@ export async function gradeWritten(
 
   revalidatePath("/assessments");
   revalidatePath("/portal");
-  return { ok: true };
+  return { ok: true, message: "Grades saved successfully." };
 }
 
 export async function overrideSubmission(submissionId: string): Promise<ActionResult> {

@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm";
 import {
   boolean,
   date,
+  index,
   integer,
   pgTable,
   text,
@@ -135,7 +136,7 @@ export const examQuestions = pgTable("assessment_questions", {
   order: integer("order").notNull().default(0),
   /** Soft-delete marker — historical grades stay intact when a question is removed. */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+}, (t) => [index("assessment_questions_exam_idx").on(t.examId)]);
 
 export const examSubmissions = pgTable(
   "assessment_submissions",
@@ -164,21 +165,28 @@ export const examSubmissions = pgTable(
     overriddenAt: timestamp("overridden_at", { withTimezone: true }),
     overriddenById: uuid("overridden_by_id").references(() => users.id, { onDelete: "set null" }),
   },
-  (t) => [uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId)]
+  (t) => [
+    uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId),
+    index("assessment_submissions_trainee_idx").on(t.traineeId),
+  ]
 );
 
-export const notifications = pgTable("notifications", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  body: text("body"),
-  /** Internal link the notification points to (e.g. /assessments). */
-  link: text("link"),
-  read: boolean("read").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    body: text("body"),
+    /** Internal link the notification points to (e.g. /assessments). */
+    link: text("link"),
+    read: boolean("read").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("notifications_user_idx").on(t.userId)]
+);
 
 export const traineeChangeLogs = pgTable("trainee_change_logs", {
   id: uuid("id").defaultRandom().primaryKey(),

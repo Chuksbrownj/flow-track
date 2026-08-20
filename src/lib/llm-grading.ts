@@ -9,6 +9,11 @@
  * grades manually (the app never depends on the LLM being available).
  */
 
+import { revalidatePath } from "next/cache";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { db } from "@/db/client";
+import { examQuestions, examSubmissions } from "@/db/schema";
+
 export type WrittenQuestionForLlm = {
   id: string;
   prompt: string;
@@ -16,6 +21,117 @@ export type WrittenQuestionForLlm = {
 };
 
 const MAX_ATTEMPTS = 2;
+
+/**
+ * Suggests LLM grades for one submission's written answers and stores them on
+ * the row. Runs in the background AFTER the trainee's submit response is sent
+ * (via Next's `after()`), so the submit path never waits on the LLM.
+ *
+ * Best-effort: a missing key, a failed call, or a race with the trainer
+ * grading manually leaves llmGrades null and the trainer grades by hand — the
+ * app never depends on the LLM being available.
+ */
+export async function suggestWrittenGradesInBackground(
+  submissionId: string,
+  questions: WrittenQuestionForLlm[],
+  answers: Record<string, string>
+): Promise<void> {
+  try {
+    const raw = await suggestWrittenGrades(questions, answers);
+    const llmGrades = sanitizeLlmGrades(raw, questions);
+    if (!llmGrades) return;
+    const [updated] = await db()
+      .update(examSubmissions)
+      .set({ llmGrades: JSON.stringify(llmGrades) })
+      // Only fill suggestions while the submission still awaits grading — a
+      // trainer who already saved grades must not be overwritten.
+      .where(and(eq(examSubmissions.id, submissionId), eq(examSubmissions.status, "submitted")))
+      .returning({ id: examSubmissions.id });
+    if (updated) revalidatePath("/assessments");
+  } catch (error) {
+    console.error("Background LLM grading failed:", error);
+  }
+}
+
+/**
+ * Backfills LLM grade suggestions for submissions whose background grading was
+ * skipped (the submit-time `after()` task was interrupted, or Gemini failed
+ * transiently). Finds submitted, still-ungraded submissions that have no
+ * suggestion yet and grades a bounded batch per run, so a single cron
+ * invocation stays inside the serverless duration budget.
+ *
+ * Only touches submissions submitted more than 15 minutes ago, so one whose
+ * background grading is still in flight is never graded twice.
+ */
+export async function sweepPendingLlmGrades(options?: {
+  limit?: number;
+  concurrency?: number;
+}): Promise<{ processed: number }> {
+  const limit = options?.limit ?? 15;
+  const concurrency = options?.concurrency ?? 3;
+
+  const pending = await db()
+    .select({
+      id: examSubmissions.id,
+      examId: examSubmissions.examId,
+      answers: examSubmissions.answers,
+    })
+    .from(examSubmissions)
+    .where(
+      and(
+        eq(examSubmissions.status, "submitted"),
+        isNull(examSubmissions.llmGrades),
+        // Give the submit-time background task time to finish before we
+        // duplicate its work.
+        lt(examSubmissions.submittedAt, new Date(Date.now() - 15 * 60_000))
+      )
+    )
+    .orderBy(asc(examSubmissions.submittedAt))
+    .limit(limit);
+
+  if (pending.length === 0) return { processed: 0 };
+
+  const examIds = [...new Set(pending.map((submission) => submission.examId))];
+  const questionRows = await db()
+    .select({
+      id: examQuestions.id,
+      examId: examQuestions.examId,
+      prompt: examQuestions.prompt,
+      points: examQuestions.points,
+    })
+    .from(examQuestions)
+    .where(
+      and(
+        inArray(examQuestions.examId, examIds),
+        eq(examQuestions.type, "written"),
+        isNull(examQuestions.deletedAt)
+      )
+    );
+  const questionsByExam = new Map<string, WrittenQuestionForLlm[]>();
+  for (const question of questionRows) {
+    const list = questionsByExam.get(question.examId) ?? [];
+    list.push({ id: question.id, prompt: question.prompt, points: question.points });
+    questionsByExam.set(question.examId, list);
+  }
+
+  let processed = 0;
+  for (let i = 0; i < pending.length; i += concurrency) {
+    const batch = pending.slice(i, i + concurrency);
+    const graded = await Promise.all(
+      batch.map(async (submission) => {
+        const questions = questionsByExam.get(submission.examId) ?? [];
+        if (questions.length === 0) return false; // objective-only — nothing to suggest
+        const answers = submission.answers
+          ? (JSON.parse(submission.answers) as Record<string, string>)
+          : {};
+        await suggestWrittenGradesInBackground(submission.id, questions, answers);
+        return true;
+      })
+    );
+    processed += graded.filter(Boolean).length;
+  }
+  return { processed };
+}
 
 /**
  * Asks Gemini to suggest a score (0..points) for each written answer.

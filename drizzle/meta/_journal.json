@@ -78,6 +78,13 @@
       "when": 1787049925998,
       "tag": "0010_exam_soft_delete_multi_select_llm_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787267247066,
+      "tag": "0011_add_missing_exam_indexes",
+      "breakpoints": true
     }
   ]
 }
