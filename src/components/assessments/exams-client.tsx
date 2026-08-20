@@ -624,6 +624,9 @@ export function ExamsClient({
             <SavedQuestionsPreviewDialog
               key={previewSavedTarget.id}
               exam={previewSavedTarget}
+              onEditQuestion={(question) =>
+                setEditQuestionTarget({ exam: previewSavedTarget, question })
+              }
               onClose={() => setPreviewSavedTarget(null)}
             />
           ) : null}
@@ -974,17 +977,23 @@ function isCorrectOption(
 }
 
 /**
- * Read-only preview of the questions currently saved in an exam, with their
- * answer keys. Always available from the exam card — no file re-upload needed.
+ * Preview of the questions currently saved in an exam, with their answer keys.
+ * Always available from the exam card — no file re-upload needed. While the
+ * exam is still a draft (its time has not started) each question can be
+ * edited in place; once the exam has started the preview is read-only.
  */
 function SavedQuestionsPreviewDialog({
   exam,
+  onEditQuestion,
   onClose,
 }: {
   exam: ExamListItem;
+  onEditQuestion: (question: QuestionRow) => void;
   onClose: () => void;
 }) {
   const questions = exam.questions;
+  // A draft exam has not started, so its questions can still be edited.
+  const canEdit = exam.status === "draft";
   const typeLabel = (type: QuestionRow["type"]) =>
     type === "written" ? "Written" : type === "multiple" ? "Multiple answer" : "Objective";
 
@@ -998,6 +1007,9 @@ function SavedQuestionsPreviewDialog({
         <DialogDescription>
           &quot;{exam.title}&quot; — {questions.length} question{questions.length === 1 ? "" : "s"} saved.
           The marked options are the answer key used for auto-grading.
+          {canEdit
+            ? " The exam has not started yet, so the questions can still be edited."
+            : " The exam has started, so the questions are locked."}
         </DialogDescription>
       </DialogHeader>
       {questions.length === 0 ? (
@@ -1008,27 +1020,43 @@ function SavedQuestionsPreviewDialog({
         <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
           {questions.map((question, index) => (
             <li key={question.id} className="rounded-lg border p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">
-                  {index + 1}. {question.prompt}
-                </span>
-                <Badge variant="secondary">{typeLabel(question.type)}</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {question.points} pt{question.points === 1 ? "" : "s"}
-                </span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">
+                      {index + 1}. {question.prompt}
+                    </span>
+                    <Badge variant="secondary">{typeLabel(question.type)}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {question.points} pt{question.points === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {question.options ? (
+                    <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                      {question.options.map((option, optionIndex) => (
+                        <li key={optionIndex}>
+                          {String.fromCharCode(65 + optionIndex)}. {option}
+                          {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
+                  )}
+                </div>
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 text-muted-foreground"
+                    title="Edit question"
+                    onClick={() => onEditQuestion(question)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
               </div>
-              {question.options ? (
-                <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                  {question.options.map((option, optionIndex) => (
-                    <li key={optionIndex}>
-                      {String.fromCharCode(65 + optionIndex)}. {option}
-                      {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
-              )}
             </li>
           ))}
         </ul>
