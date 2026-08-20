@@ -177,6 +177,7 @@ export function ExamsClient({
     questions: ImportedQuestion[];
   } | null>(null);
   const [previewSavedTarget, setPreviewSavedTarget] = useState<ExamListItem | null>(null);
+  const [traineesTarget, setTraineesTarget] = useState<ExamListItem | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -373,6 +374,16 @@ export function ExamsClient({
                       >
                         <Pencil className="h-4 w-4" />
                         Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        title="See who is taking this exam"
+                        onClick={() => setTraineesTarget(exam)}
+                      >
+                        <Users className="h-4 w-4" />
+                        Trainees ({exam.submissions.filter((s) => s.status === "in_progress").length})
                       </Button>
                       <Button
                         variant={expanded ? "secondary" : "ghost"}
@@ -614,6 +625,20 @@ export function ExamsClient({
               key={previewSavedTarget.id}
               exam={previewSavedTarget}
               onClose={() => setPreviewSavedTarget(null)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={traineesTarget !== null} onOpenChange={(open) => !open && setTraineesTarget(null)}>
+        <DialogContent className="sm:max-w-xl">
+          {traineesTarget ? (
+            <TraineesTakingExamDialog
+              key={traineesTarget.id}
+              exam={traineesTarget}
+              onGrade={(submission) => setGradeTarget({ submission, exam: traineesTarget })}
+              onReopen={(submission) => run(submission.id, () => overrideSubmission(submission.id))}
+              onClose={() => setTraineesTarget(null)}
             />
           ) : null}
         </DialogContent>
@@ -1006,6 +1031,128 @@ function SavedQuestionsPreviewDialog({
               )}
             </li>
           ))}
+        </ul>
+      )}
+      <DialogFooter showCloseButton={false}>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+/**
+ * Lists every trainee attempt for an exam in a dialog, so trainers can see who
+ * is taking the exam and reopen auto-submitted attempts without expanding the
+ * results section.
+ */
+function TraineesTakingExamDialog({
+  exam,
+  onGrade,
+  onReopen,
+  onClose,
+}: {
+  exam: ExamListItem;
+  onGrade: (submission: SubmissionRow) => void;
+  onReopen: (submission: SubmissionRow) => void;
+  onClose: () => void;
+}) {
+  const activeCount = exam.submissions.filter((s) => s.status === "in_progress").length;
+
+  return (
+    <div className="space-y-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" />
+          Trainees taking this exam
+        </DialogTitle>
+        <DialogDescription>
+          &quot;{exam.title}&quot; — {exam.submissions.length} attempt
+          {exam.submissions.length === 1 ? "" : "s"}
+          {activeCount > 0 ? `, ${activeCount} in progress` : ""}. You can reopen a
+          submitted attempt while the exam is still open.
+        </DialogDescription>
+      </DialogHeader>
+      {exam.submissions.length === 0 ? (
+        <p className="rounded-lg border bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">
+          No trainees have started this exam yet.
+        </p>
+      ) : (
+        <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border">
+          {exam.submissions.map((submission) => {
+            const hasWritten = submission.writtenQuestions.length > 0;
+            const canGrade = submission.status === "submitted" && hasWritten;
+            const canOverride = submission.status === "submitted" && exam.status === "open";
+            const pct = percent(submission.autoScore, submission.writtenScore, submission.totalPoints);
+            return (
+              <li
+                key={submission.id}
+                className="flex flex-wrap items-center justify-between gap-3 px-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{submission.traineeName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {submission.registrationNumber ?? "—"}
+                    {submission.submittedAt
+                      ? ` · submitted ${new Date(submission.submittedAt).toLocaleString("en-GB")}`
+                      : ""}
+                    {submission.fullscreenViolations > 0
+                      ? ` · ${submission.fullscreenViolations} window switch${submission.fullscreenViolations === 1 ? "" : "es"}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={submission.status} />
+                  {pct !== null ? (
+                    <Badge variant={pct >= 50 ? "default" : "destructive"}>{pct}%</Badge>
+                  ) : null}
+                  {canGrade ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => onGrade(submission)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Grade written
+                    </Button>
+                  ) : null}
+                  {canOverride ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-primary"
+                          title="Reopen the exam for this trainee"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                          Reopen
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Reopen this exam for the trainee?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            The trainee will continue from where they left off, with their answers
+                            intact and the window-switch counter reset. This is only allowed while
+                            the exam is still open.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => onReopen(submission)}>
+                            Reopen exam
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       <DialogFooter showCloseButton={false}>
