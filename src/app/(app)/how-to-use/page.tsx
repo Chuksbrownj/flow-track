@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarDays,
   ClipboardCheck,
+  FileQuestion,
   GraduationCap,
   LayoutDashboard,
   ScrollText,
@@ -75,11 +76,19 @@ export default async function HowToUsePage() {
           </ul>
         </Section>
 
-        <Section icon={GraduationCap} title="Score sheet & exams">
+        <Section icon={GraduationCap} title="Score sheet">
           <ul className="space-y-2">
             <Item>Assessments → Score sheet: pick a course tab and enter each week&apos;s score out of 100 in its column (use Add week to backfill a missing week). Course total sums all weeks; the Grand total tab adds every course and shows an average %.</Item>
-            <Item>Assessments → Exams: create exams, add questions one by one or upload a CSV, Excel, PDF, Word, Markdown or HTML file.</Item>
-            <Item>Opening or closing an exam asks for confirmation; a closed exam can be reopened if it was closed by mistake.</Item>
+          </ul>
+        </Section>
+
+        <Section icon={FileQuestion} title="Exams — how to use">
+          <ul className="space-y-2">
+            <Item>Assessments → Exams: create a draft exam, then add questions one by one or upload a CSV, Excel, PDF, Word, Markdown or HTML file. Review the parsed questions (search, filter, edit, remove) before importing them.</Item>
+            <Item>Preview shows the saved questions with their answer key anytime — while the exam is still a draft you can edit them from the preview; once it has started they are locked.</Item>
+            <Item>Opening an exam asks for a closing time and notifies trainees. Exams run in full-screen: leaving the screen for more than 10 seconds or pressing Escape more than twice auto-submits the exam, so trainees can&apos;t browse away.</Item>
+            <Item>The Trainees button lists who is taking the exam. If a trainee&apos;s exam was auto-submitted, use Reopen next to their name to let them resume where they left off while the exam is still open.</Item>
+            <Item>After submissions, grade written answers (Grade written), then Close the exam. A closed exam can be reopened if it was closed by mistake.</Item>
           </ul>
         </Section>
 

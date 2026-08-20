@@ -12,9 +12,11 @@ import {
 import { AssessmentsClient } from "@/components/assessments/assessments-client";
 import { ExamsClient, type ExamListItem, type SubmissionRow } from "@/components/assessments/exams-client";
 import { TraineeExams, type TraineeExamRow } from "@/components/assessments/trainee-exams";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { weekKey } from "@/lib/date";
 import { listCourses } from "@/lib/courses";
+import { GraduationCap } from "lucide-react";
 
 export const metadata = { title: "Assessments" };
 
@@ -278,12 +280,56 @@ export default async function AssessmentsPage({
           <TabsTrigger value="scores">Score sheet</TabsTrigger>
         </TabsList>
         <TabsContent value="exams" className="pt-4">
-          <ExamsClient
-            exams={examList}
-            canCreateAnyTopic={isAdmin}
-            trainerTopic={user.topic ?? null}
-            courses={courseList.map((course) => course.name)}
-          />
+          <div className="space-y-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <GraduationCap className="h-5 w-5 text-primary" />
+                  How to use exams
+                </CardTitle>
+                <CardDescription>
+                  Create a draft exam, add questions, open it for trainees, then grade and close it.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+                  <li>
+                    <strong className="text-foreground">Create an exam</strong> — New exam, then set
+                    the title, course, duration and description. It starts as a draft.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Add questions</strong> — one by one with Add
+                    question, or upload a CSV, Excel, PDF, Word, Markdown or HTML file with Upload
+                    questions. Review the parsed questions (search, filter, edit, remove) before
+                    importing. Preview shows the saved questions anytime — while the exam is still a
+                    draft you can edit them from there; once it has started they are locked.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Open the exam</strong> — pick a closing time.
+                    Trainees are notified and take the exam in full-screen mode.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Monitor attempts</strong> — Trainees lists who
+                    is taking the exam, Results expands each attempt with scores. Exams run in
+                    full-screen: leaving the screen for more than 10 seconds or pressing Escape more
+                    than twice auto-submits the exam. If that happens, Reopen lets the trainee resume
+                    where they left off while the exam is still open.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Grade and close</strong> — Grade written
+                    answers from the results, then Close the exam when you&apos;re done. A closed exam
+                    can be reopened if it was closed by mistake.
+                  </li>
+                </ol>
+              </CardContent>
+            </Card>
+            <ExamsClient
+              exams={examList}
+              canCreateAnyTopic={isAdmin}
+              trainerTopic={user.topic ?? null}
+              courses={courseList.map((course) => course.name)}
+            />
+          </div>
         </TabsContent>
         <TabsContent value="scores" className="pt-4">
           <AssessmentsClient
