@@ -15,7 +15,6 @@ A simple training management system — students, attendance, weekly score sheet
 - Recharts
 - Deployed on Vercel
 
-All services used are free tier.
 
 ## Roles
 
