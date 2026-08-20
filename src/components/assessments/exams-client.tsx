@@ -70,11 +70,13 @@ import {
   importQuestions,
   openExam,
   overrideSubmission,
+  previewQuestionFile,
   reopenExam,
   updateExamDetails,
   updateExamQuestion,
 } from "@/lib/actions/exams";
-import { questionTemplateCsv } from "@/lib/assessment-import";
+import { questionTemplateCsv } from "@/lib/question-template";
+import type { ImportedQuestion } from "@/lib/assessment-import";
 
 export type SubmissionRow = {
   id: string;
@@ -165,6 +167,11 @@ export function ExamsClient({
   } | null>(null);
   const [closeTarget, setCloseTarget] = useState<ExamListItem | null>(null);
   const [reopenTarget, setReopenTarget] = useState<ExamListItem | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<{
+    exam: ExamListItem;
+    fileName: string;
+    questions: ImportedQuestion[];
+  } | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -182,6 +189,38 @@ export function ExamsClient({
     });
   }
 
+  /** Parses an uploaded file and opens the review dialog — nothing saved yet. */
+  function previewForExam(exam: ExamListItem, file: File) {
+    const formData = new FormData();
+    formData.set("file", file);
+    setPendingId(exam.id);
+    startTransition(async () => {
+      const result = await previewQuestionFile(formData);
+      setPendingId(null);
+      if (result.ok && result.questions) {
+        setPreviewTarget({ exam, fileName: file.name, questions: result.questions });
+      } else {
+        toast.error(result.error ?? "Could not read the file.");
+      }
+    });
+  }
+
+  /** Saves the reviewed questions into the exam. */
+  function confirmImport(exam: ExamListItem, questions: ImportedQuestion[]) {
+    setPendingId(exam.id);
+    startTransition(async () => {
+      const result = await importQuestions(exam.id, questions);
+      setPendingId(null);
+      if (result.ok) {
+        setPreviewTarget(null);
+        toast.success(result.message ?? `Imported ${questions.length} questions.`);
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Something went wrong.");
+      }
+    });
+  }
+
   const busy = pendingId !== null;
 
   return (
@@ -190,7 +229,8 @@ export function ExamsClient({
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Exams</h2>
           <p className="text-sm text-muted-foreground">
-            Create exams, import questions from CSV/Excel, and open them for trainees.
+            Create exams, import questions from CSV, Excel, PDF, Word, Markdown
+            or HTML, and open them for trainees.
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -232,8 +272,8 @@ export function ExamsClient({
             </div>
             <p className="text-sm font-medium">No exams yet</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Create your first exam, then add questions one by one or upload them from a CSV,
-              Excel or Word (.docx) file.
+              Create your first exam, then add questions one by one or upload them from a
+              CSV, Excel, PDF, Word, Markdown or HTML file.
             </p>
           </CardContent>
         </Card>
@@ -266,7 +306,7 @@ export function ExamsClient({
                     <div className="flex flex-wrap items-center gap-2">
                       <UploadQuestionsButton
                         busy={busy}
-                        onUpload={(formData) => run(exam.id, () => importQuestions(exam.id, formData))}
+                        onFile={(file) => previewForExam(exam, file)}
                       />
                       <Button
                         variant="outline"
@@ -545,6 +585,39 @@ export function ExamsClient({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={previewTarget !== null} onOpenChange={(open) => !open && setPreviewTarget(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          {previewTarget ? (
+            <PreviewQuestionsDialog
+              key={`${previewTarget.exam.id}-${previewTarget.fileName}`}
+              exam={previewTarget.exam}
+              fileName={previewTarget.fileName}
+              questions={previewTarget.questions}
+              busy={busy}
+              onRemove={(index) =>
+                setPreviewTarget((prev) =>
+                  prev
+                    ? { ...prev, questions: prev.questions.filter((_, i) => i !== index) }
+                    : prev
+                )
+              }
+              onEdit={(index, question) =>
+                setPreviewTarget((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        questions: prev.questions.map((q, i) => (i === index ? question : q)),
+                      }
+                    : prev
+                )
+              }
+              onClose={() => setPreviewTarget(null)}
+              onImport={(questions) => confirmImport(previewTarget.exam, questions)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={addQuestionTarget !== null}
         onOpenChange={(open) => !open && setAddQuestionTarget(null)}
@@ -741,8 +814,8 @@ function CreateExamForm({
           New exam
         </DialogTitle>
         <DialogDescription>
-          Create a draft, then add questions manually or upload them from a CSV, Excel or Word
-          (.docx) file.
+          Create a draft, then add questions manually or upload them from a CSV, Excel,
+          PDF, Word, Markdown or HTML file.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-2">
@@ -789,19 +862,17 @@ function CreateExamForm({
 
 function UploadQuestionsButton({
   busy,
-  onUpload,
+  onFile,
 }: {
   busy: boolean;
-  onUpload: (formData: FormData) => void;
+  onFile: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, startUpload] = useTransition();
 
   function handleFile(file: File | undefined) {
     if (!file) return;
-    const formData = new FormData();
-    formData.set("file", file);
-    startUpload(() => onUpload(formData));
+    startUpload(() => onFile(file));
   }
 
   return (
@@ -818,7 +889,7 @@ function UploadQuestionsButton({
       </Button>        <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx,.xls,.docx"
+          accept=".csv,.xlsx,.xls,.docx,.doc,.pdf,.md,.txt,.html,.htm"
           className="hidden"
         onChange={(event) => {
           handleFile(event.target.files?.[0]);
@@ -829,6 +900,392 @@ function UploadQuestionsButton({
         <Download className="h-4 w-4" />
         Template
       </Button>
+    </div>
+  );
+}
+
+/** Returns true when the given option index is part of the question's answer key. */
+function isCorrectOption(question: ImportedQuestion, optionIndex: number): boolean {
+  if (question.type === "objective") return question.correctOption === optionIndex;
+  if (question.type === "multiple") return question.correctOptions?.includes(optionIndex) ?? false;
+  return false;
+}
+
+/**
+ * The review step shown after a question file is parsed: the admin sees every
+ * question with its answer key, can edit or drop misread rows inline, then
+ * imports the remaining questions.
+ */
+function PreviewQuestionsDialog({
+  exam,
+  fileName,
+  questions,
+  busy,
+  onRemove,
+  onEdit,
+  onClose,
+  onImport,
+}: {
+  exam: ExamListItem;
+  fileName: string;
+  questions: ImportedQuestion[];
+  busy: boolean;
+  onRemove: (index: number) => void;
+  onEdit: (index: number, question: ImportedQuestion) => void;
+  onClose: () => void;
+  onImport: (questions: ImportedQuestion[]) => void;
+}) {
+  // Only one row can be edited at a time; the other rows are locked so the
+  // index that identifies the row being edited can't shift under it.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const editing = editingIndex !== null;
+
+  const typeLabel = (type: ImportedQuestion["type"]) =>
+    type === "written" ? "Written" : type === "multiple" ? "Multiple answer" : "Objective";
+  const pointsLabel = (points: number) => `${points} pt${points === 1 ? "" : "s"}`;
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onImport(questions);
+      }}
+      className="space-y-4"
+    >
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <FileUp className="h-4 w-4 text-primary" />
+          Review imported questions
+        </DialogTitle>
+        <DialogDescription>
+          {fileName} — {questions.length} question{questions.length === 1 ? "" : "s"} parsed from
+          &quot;{exam.title}&quot;. Edit or remove any that were misread, then import the rest.
+        </DialogDescription>
+      </DialogHeader>
+
+      {questions.length === 0 ? (
+        <p className="rounded-lg border bg-muted/50 px-3 py-4 text-center text-sm text-muted-foreground">
+          No questions left to import.
+        </p>
+      ) : (
+        <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
+          {questions.map((question, index) =>
+            index === editingIndex ? (
+              <li key={index} className="rounded-lg border p-3">
+                <InlineQuestionEditor
+                  initial={question}
+                  onSave={(updated) => {
+                    onEdit(index, updated);
+                    setEditingIndex(null);
+                  }}
+                  onCancel={() => setEditingIndex(null)}
+                />
+              </li>
+            ) : (
+              <li key={index} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">
+                        {index + 1}. {question.prompt}
+                      </span>
+                      <Badge variant="secondary">{typeLabel(question.type)}</Badge>
+                      <span className="text-xs text-muted-foreground">{pointsLabel(question.points)}</span>
+                    </div>
+                    {question.options ? (
+                      <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                        {question.options.map((option, optionIndex) => (
+                          <li key={optionIndex}>
+                            {String.fromCharCode(65 + optionIndex)}. {option}
+                            {isCorrectOption(question, optionIndex) ? " ✓ correct" : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">Theory answer — graded manually.</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      title="Edit question"
+                      disabled={editing}
+                      onClick={() => setEditingIndex(index)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      title="Remove question"
+                      disabled={editing}
+                      onClick={() => onRemove(index)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </li>
+            )
+          )}
+        </ul>
+      )}
+
+      <DialogFooter showCloseButton={false}>
+        <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy || questions.length === 0 || editing}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+          Import {questions.length} question{questions.length === 1 ? "" : "s"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/**
+ * Inline editor for a single parsed question: text, type, options, answer
+ * key and points. Validates locally; the server re-validates on import.
+ */
+function InlineQuestionEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: ImportedQuestion;
+  onSave: (question: ImportedQuestion) => void;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState<"objective" | "multiple" | "written">(initial.type);
+  const [prompt, setPrompt] = useState(initial.prompt);
+  const [options, setOptions] = useState<string[]>(
+    initial.options ? [...initial.options] : ["", "", "", ""]
+  );
+  const [correct, setCorrect] = useState<string>(
+    initial.correctOption !== null && initial.correctOption !== undefined
+      ? String(initial.correctOption)
+      : "0"
+  );
+  const [correctMulti, setCorrectMulti] = useState<Set<number>>(
+    () => new Set(initial.correctOptions ?? [])
+  );
+  const [points, setPoints] = useState(String(initial.points));
+
+  const optionLetters = ["A", "B", "C", "D", "E", "F"];
+
+  function toggleCorrectMulti(index: number) {
+    setCorrectMulti((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function handleSave() {
+    const trimmedPrompt = prompt.trim();
+    if (trimmedPrompt.length < 3) {
+      toast.error("Question text is required (at least 3 characters).");
+      return;
+    }
+    const parsedPoints = Number(points);
+    if (!Number.isInteger(parsedPoints) || parsedPoints < 1 || parsedPoints > 100) {
+      toast.error("Points must be a whole number between 1 and 100.");
+      return;
+    }
+
+    if (type === "written") {
+      onSave({
+        type: "written",
+        prompt: trimmedPrompt,
+        options: null,
+        correctOption: null,
+        correctOptions: null,
+        points: parsedPoints,
+      });
+      return;
+    }
+
+    const cleaned = options.map((option) => option.trim());
+    if (cleaned.length < 2 || cleaned.some((option) => option === "")) {
+      toast.error("Option questions need at least two non-empty options.");
+      return;
+    }
+
+    if (type === "objective") {
+      const correctIndex = Number(correct);
+      if (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= cleaned.length) {
+        toast.error("Choose the correct option.");
+        return;
+      }
+      onSave({
+        type,
+        prompt: trimmedPrompt,
+        options: cleaned,
+        correctOption: correctIndex,
+        correctOptions: null,
+        points: parsedPoints,
+      });
+      return;
+    }
+
+    const indices = [...correctMulti].filter((index) => index < cleaned.length).sort();
+    if (indices.length < 1) {
+      toast.error("Choose at least one correct option.");
+      return;
+    }
+    onSave({
+      type,
+      prompt: trimmedPrompt,
+      options: cleaned,
+      correctOption: null,
+      correctOptions: indices,
+      points: parsedPoints,
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Edit question</p>
+        <div className="flex items-center gap-1.5">
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" size="sm" onClick={handleSave}>
+            Save changes
+          </Button>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+        <div className="space-y-2">
+          <Label htmlFor="preview-question-text">Question</Label>
+          <Textarea
+            id="preview-question-text"
+            rows={2}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Type</Label>
+          <Select value={type} onValueChange={(value) => setType(value as "objective" | "multiple" | "written")}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="objective">Objective</SelectItem>
+              <SelectItem value="multiple">Multiple answer</SelectItem>
+              <SelectItem value="written">Written</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {type === "objective" || type === "multiple" ? (
+        <div className="space-y-2">
+          <Label>Options</Label>
+          {options.map((option, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <span className="w-4 shrink-0 text-xs font-medium text-muted-foreground">
+                {optionLetters[index]}
+              </span>
+              <Input
+                value={option}
+                placeholder="Answer option"
+                onChange={(event) =>
+                  setOptions((prev) => prev.map((o, i) => (i === index ? event.target.value : o)))
+                }
+              />
+              {options.length > 2 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground"
+                  title="Remove option"
+                  onClick={() => setOptions((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          ))}
+          {options.length < 6 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-muted-foreground"
+              onClick={() => setOptions((prev) => [...prev, ""])}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add option
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Theory answer — graded manually.</p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {type === "objective" ? (
+          <div className="space-y-2">
+            <Label>Correct option</Label>
+            <Select value={correct} onValueChange={setCorrect}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((_, index) => (
+                  <SelectItem key={index} value={String(index)}>
+                    {optionLetters[index]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : type === "multiple" ? (
+          <div className="space-y-2">
+            <Label>Correct options</Label>
+            <div className="flex flex-wrap gap-2">
+              {options.map((_, index) => (
+                <label
+                  key={index}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+                    correctMulti.has(index)
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "hover:bg-muted/60"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={correctMulti.has(index)}
+                    onChange={() => toggleCorrectMulti(index)}
+                  />
+                  {optionLetters[index]}
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="space-y-2">
+          <Label htmlFor="preview-question-points">Points</Label>
+          <Input
+            id="preview-question-points"
+            type="number"
+            min={1}
+            max={100}
+            value={points}
+            onChange={(event) => setPoints(event.target.value)}
+          />
+        </div>
+      </div>
     </div>
   );
 }

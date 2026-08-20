@@ -78,7 +78,7 @@ export default async function HowToUsePage() {
         <Section icon={GraduationCap} title="Score sheet & exams">
           <ul className="space-y-2">
             <Item>Assessments → Score sheet: pick a course tab and enter each week&apos;s score out of 100 in its column (use Add week to backfill a missing week). Course total sums all weeks; the Grand total tab adds every course and shows an average %.</Item>
-            <Item>Assessments → Exams: create exams, add questions one by one or upload a CSV/Excel/Word (.docx) file.</Item>
+            <Item>Assessments → Exams: create exams, add questions one by one or upload a CSV, Excel, PDF, Word, Markdown or HTML file.</Item>
             <Item>Opening or closing an exam asks for confirmation; a closed exam can be reopened if it was closed by mistake.</Item>
           </ul>
         </Section>

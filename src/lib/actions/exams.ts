@@ -6,7 +6,11 @@ import { db } from "@/db/client";
 import { examQuestions, exams, examSubmissions, notifications, trainees, users } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { isValidCourse } from "@/lib/courses";
-import { parseQuestionFile } from "@/lib/assessment-import";
+import {
+  parseQuestionFile,
+  validateImportedQuestions,
+  type ImportedQuestion,
+} from "@/lib/assessment-import";
 import { isUuid } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 import { sanitizeLlmGrades, suggestWrittenGrades } from "@/lib/llm-grading";
@@ -128,18 +132,18 @@ export async function createExam(formData: FormData): Promise<ActionResult & { i
   }
 }
 
-export async function importQuestions(
-  examId: string,
+/**
+ * Parses an uploaded question file (CSV/Excel/PDF/Word/Markdown) and returns
+ * the questions for admin review — nothing is saved yet.
+ */
+export async function previewQuestionFile(
   formData: FormData
-): Promise<ActionResult> {
-  const staff = await requireStaff();
-  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
-  const { exam, error } = await canManageExam(examId, staff);
-  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+): Promise<ActionResult & { questions?: ImportedQuestion[] }> {
+  await requireStaff();
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, error: "Choose a CSV or Excel file to upload." };
+    return { ok: false, error: "Choose a CSV, Excel, PDF, Word, Markdown or HTML file to upload." };
   }
 
   const result = await parseQuestionFile(file);
@@ -149,9 +153,29 @@ export async function importQuestions(
       error:
         result.errors && result.errors.length > 0
           ? result.errors.slice(0, 3).join(" ")
-          : "Could not import the file.",
+          : "Could not read the file.",
     };
   }
+
+  return { ok: true, questions: result.questions };
+}
+
+/**
+ * Saves reviewed questions into an exam. The questions were parsed and shown
+ * in the preview step, but the server re-validates them before inserting.
+ */
+export async function importQuestions(
+  examId: string,
+  questions: ImportedQuestion[]
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+  if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
+  const { exam, error } = await canManageExam(examId, staff);
+  if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+
+  const validated = validateImportedQuestions(questions);
+  if (!validated.ok) return { ok: false, error: validated.error };
+  const parsed = validated.questions;
 
   const [maxRow] = await db()
     .select({ value: max(examQuestions.order) })
@@ -163,7 +187,7 @@ export async function importQuestions(
     await db()
       .insert(examQuestions)
       .values(
-        result.questions.map((question, index) => ({
+        parsed.map((question, index) => ({
           examId,
           type: question.type,
           prompt: question.prompt,
@@ -181,7 +205,7 @@ export async function importQuestions(
   }
 
   revalidatePath("/assessments");
-  return { ok: true, message: `Imported ${result.imported} question${result.imported === 1 ? "" : "s"}.` };
+  return { ok: true, message: `Imported ${parsed.length} question${parsed.length === 1 ? "" : "s"}.` };
 }
 
 export type QuestionInput = {

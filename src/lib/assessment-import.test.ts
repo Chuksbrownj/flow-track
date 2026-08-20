@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
-import { parseQuestionFile, questionTemplateCsv } from "@/lib/assessment-import";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import { parseQuestionFile, validateImportedQuestions } from "@/lib/assessment-import";
+import { questionTemplateCsv } from "@/lib/question-template";
 
 const HEADER = "type,question,optionA,optionB,optionC,optionD,correct,points";
 
@@ -62,10 +64,12 @@ async function docxFile(paragraphs: string[], name = "questions.docx"): Promise<
 
 describe("parseQuestionFile — file gating", () => {
   it("rejects unsupported file types", async () => {
-    const result = await parseQuestionFile(new File(["hello"], "notes.txt"));
+    const result = await parseQuestionFile(new File(["hello"], "notes.png"));
     expect(result).toEqual({
       ok: false,
-      errors: ["Please upload a .csv, .xlsx, .xls or .docx file."],
+      errors: [
+        "Please upload a .csv, .xlsx, .xls, .docx, .doc, .pdf, .md, .txt or .html file.",
+      ],
     });
   });
 
@@ -227,6 +231,20 @@ describe("parseQuestionFile — CSV", () => {
       errors: ["Row 2: points must be a whole number between 1 and 100."],
     });
   });
+
+  it("defaults points by type when the points column is blank (option 1, written 5)", async () => {
+    const content = [
+      HEADER,
+      "objective,Which?,Alpha,Beta,,,A,",
+      "written,Explain a concept.,,,,,",
+    ].join("\n");
+    const result = await parseQuestionFile(csvFile(content));
+    expect(result.ok).toBe(true);
+    expect(result.questions?.[0]?.points).toBe(1);
+    expect(result.questions?.[0]?.type).toBe("objective");
+    expect(result.questions?.[1]?.points).toBe(5);
+    expect(result.questions?.[1]?.type).toBe("written");
+  });
 });
 
 describe("parseQuestionFile — Excel", () => {
@@ -299,7 +317,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         options: null,
         correctOption: null,
         correctOptions: null,
-        points: 1, // default when no Points line
+        points: 5, // written questions default to 5 when no Points line
       },
     ]);
   });
@@ -336,7 +354,7 @@ describe("parseQuestionFile — Word (.docx)", () => {
         options: null,
         correctOption: null,
         correctOptions: null,
-        points: 1,
+        points: 5,
       },
     ]);
   });
@@ -388,6 +406,538 @@ describe("parseQuestionFile — Word (.docx)", () => {
   });
 });
 
+/** Builds a small PDF with one text line per entry (via pdf-lib). */
+async function pdfFile(lines: string[], name = "questions.pdf"): Promise<File> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([612, 792]);
+  lines.forEach((line, index) => {
+    page.drawText(line, { x: 50, y: 740 - index * 24, size: 14, font });
+  });
+  const bytes = await doc.save();
+  return new File([bufferToArrayBuffer(bytes as unknown as Buffer)], name);
+}
+
+describe("parseQuestionFile — Markdown and plain text", () => {
+  it("parses Markdown question papers (bullets, bold, headings, multiple answers)", async () => {
+    const content = [
+      "# Graphic Design Module 1 Quiz",
+      "",
+      "**1. What colour model is used for print?**",
+      "- A. RGB",
+      "- B. CMYK",
+      "- C. HSV",
+      "- D. HSL",
+      "**Answer:** B",
+      "",
+      "2. Which of these are primary colours?",
+      "- A. Red",
+      "- B. Green",
+      "- C. Blue",
+      "- D. Yellow",
+      "**Answer:** A and C",
+      "",
+      "3. Explain how a stacked bar chart differs from a grouped bar chart.",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "questions.md"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(3);
+    expect(result.questions).toEqual([
+      {
+        type: "objective",
+        prompt: "1. What colour model is used for print?",
+        options: ["RGB", "CMYK", "HSV", "HSL"],
+        correctOption: 1,
+        correctOptions: null,
+        points: 1, // option questions default to 1
+      },
+      {
+        type: "multiple",
+        prompt: "2. Which of these are primary colours?",
+        options: ["Red", "Green", "Blue", "Yellow"],
+        correctOption: null,
+        correctOptions: [0, 2], // A, C
+        points: 1,
+      },
+      {
+        type: "written",
+        prompt: "3. Explain how a stacked bar chart differs from a grouped bar chart.",
+        options: null,
+        correctOption: null,
+        correctOptions: null,
+        points: 5, // written questions default to 5
+      },
+    ]);
+  });
+
+  it("parses plain text (.txt) question papers", async () => {
+    const content = `What colour model is used for print?
+A) RGB
+B) CMYK
+C) HSV
+D) HSL
+Answer: B
+Points: 2
+
+Explain how a stacked bar chart differs from a grouped bar chart.`;
+
+    const result = await parseQuestionFile(new File([content], "questions.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      options: ["RGB", "CMYK", "HSV", "HSL"],
+      correctOption: 1,
+      points: 2,
+    });
+    expect(result.questions?.[1]).toMatchObject({
+      type: "written",
+      points: 5,
+    });
+  });
+
+  it("drops page numbers and supports \"Answer: A,C\" for multiple answers", async () => {
+    const content = `Page 1
+Which two are primary colours?
+A) Red
+B) Green
+C) Blue
+D) Yellow
+Answer: A,C
+1
+Which is the odd one out?
+A) Red
+B) Green
+C) Blue
+D) Yellow
+Answer: B`;
+
+    const result = await parseQuestionFile(new File([content], "questions.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "multiple", correctOptions: [0, 2] });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 1 });
+  });
+});
+
+describe("parseQuestionFile — document structure is skipped", () => {
+  it("skips the paper title, section headers and instruction lines", async () => {
+    const content = [
+      "MODULE 1 EXAM",
+      "SECTION A: Multiple Choice Questions",
+      "What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: B",
+      "SECTION B — Theory",
+      "Explain how a stacked bar chart differs from a grouped bar chart.",
+      "DURATION: 1 HOUR",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions).toEqual([
+      {
+        type: "objective",
+        prompt: "What colour model is used for print?",
+        options: ["RGB", "CMYK", "HSV", "HSL"],
+        correctOption: 1,
+        correctOptions: null,
+        points: 1,
+      },
+      {
+        type: "written",
+        prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
+        options: null,
+        correctOption: null,
+        correctOptions: null,
+        points: 5,
+      },
+    ]);
+  });
+
+  it("drops a lower-case caption-style opening title", async () => {
+    const result = await parseQuestionFile(
+      new File(["Graphic Design Theory Examination\nDefine the term kerning."], "paper.txt")
+    );
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "written",
+      prompt: "Define the term kerning.",
+    });
+  });
+
+  it("skips closing lines like THE END", async () => {
+    const content = [
+      "Define the term kerning.",
+      "THE END",
+      "Good luck!",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({ prompt: "Define the term kerning." });
+  });
+
+  it("keeps written questions that begin like sentences", async () => {
+    const content = [
+      "Write short notes on the types of computers.",
+      "Essay writing is an important skill.",
+      "Test the hypothesis that demand falls when price rises.",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(3);
+    expect(result.questions?.map((question) => question.type)).toEqual([
+      "written",
+      "written",
+      "written",
+    ]);
+  });
+
+  it("rejects a file that only contains titles", async () => {
+    const result = await parseQuestionFile(
+      new File(["MODULE 1 EXAM\nSECTION A"], "paper.txt")
+    );
+    expect(result).toEqual({
+      ok: false,
+      errors: ["No valid questions found in the document."],
+    });
+  });
+});
+
+describe("parseQuestionFile — HTML", () => {
+  it("parses a Google Docs-style web page export (.html)", async () => {
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<style>.c2 { font-weight: 700; }</style>
+<script>(function(){ /* analytics */ })();</script>
+</head><body>
+<p class="c0"><span>MODULE 1 EXAM</span></p>
+<p>What colour model is used for print?</p>
+<ul><li><span>A) RGB</span></li><li>B) CMYK</li><li>C) HSV</li><li>D) HSL</li></ul>
+<p>Answer: B</p>
+<p>R&amp;D costs are covered in this course.</p>
+</body></html>`;
+
+    const result = await parseQuestionFile(new File([html], "exam.html"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What colour model is used for print?",
+      options: ["RGB", "CMYK", "HSV", "HSL"],
+      correctOption: 1,
+      points: 1,
+    });
+    expect(result.questions?.[1]).toMatchObject({
+      type: "written",
+      prompt: "R&D costs are covered in this course.",
+      points: 5,
+    });
+  });
+
+  it("accepts .htm files with paragraphs on a single line", async () => {
+    const html =
+      "<html><body>" +
+      "<h2>SECTION A</h2>" +
+      "<p>Which two are primary colours?</p>" +
+      "<ul><li>A) Red</li><li>B) Green</li><li>C) Blue</li><li>D) Yellow</li></ul>" +
+      "<p>Answer: A,C</p>" +
+      "<p>Explain the difference between RAM &amp; ROM.</p>" +
+      "</body></html>";
+
+    const result = await parseQuestionFile(new File([html], "exam.htm"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "multiple", correctOptions: [0, 2] });
+    expect(result.questions?.[1]).toMatchObject({
+      type: "written",
+      prompt: "Explain the difference between RAM & ROM.",
+    });
+  });
+});
+
+describe("parseQuestionFile — trailing answer key", () => {
+  it("applies a numbered answer key to questions without inline answers", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWER KEY",
+      "1. B",
+      "2. C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
+
+  it("parses a one-line key and multiple-answer entries", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "2. Which of these are primary colours?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "Answers: 1-B, 2-A,C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "multiple", correctOptions: [0, 2] });
+  });
+
+  it("maps a key positionally when questions are unnumbered", async () => {
+    const content = [
+      "What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "Which of these are primary colours?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "Key:",
+      "1. B",
+      "2. A, C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+    expect(result.questions?.[1]).toMatchObject({ type: "multiple", correctOptions: [0, 2] });
+  });
+
+  it("keeps inline answers and does not apply the key to those questions", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: A",
+      "",
+      "2. Which is the odd one out?",
+      "A) Red",
+      "B) Green",
+      "C) Blue",
+      "D) Yellow",
+      "",
+      "ANSWERS",
+      "1. B",
+      "2. C",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 0 }); // inline wins
+    expect(result.questions?.[1]).toMatchObject({ type: "objective", correctOption: 2 });
+  });
+
+  it("does not spread key rows that refer to missing questions", async () => {
+    const content = [
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "",
+      "ANSWER KEY",
+      "1. B",
+      "5. D", // refers to a question that isn't in the paper
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({ type: "objective", correctOption: 1 });
+  });
+});
+
+describe("parseQuestionFile — PDF", () => {
+  it("extracts and parses objective and written questions from a PDF", async () => {
+    const file = await pdfFile([
+      "Page 1",
+      "What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: B",
+      "Points: 2",
+      "Explain how a stacked bar chart differs from a grouped bar chart.",
+    ]);
+
+    const result = await parseQuestionFile(file);
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions).toEqual([
+      {
+        type: "objective",
+        prompt: "What colour model is used for print?",
+        options: ["RGB", "CMYK", "HSV", "HSL"],
+        correctOption: 1,
+        correctOptions: null,
+        points: 2,
+      },
+      {
+        type: "written",
+        prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
+        options: null,
+        correctOption: null,
+        correctOptions: null,
+        points: 5,
+      },
+    ]);
+  });
+
+  it("reports a corrupt PDF file", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "broken.pdf");
+    const result = await parseQuestionFile(file);
+    expect(result).toEqual({
+      ok: false,
+      errors: ["Could not read the PDF. Make sure it is a valid .pdf file."],
+    });
+  });
+});
+
+describe("parseQuestionFile — Word (.doc)", () => {
+  it("reports a corrupt legacy Word file", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "broken.doc");
+    const result = await parseQuestionFile(file);
+    expect(result).toEqual({
+      ok: false,
+      errors: ["Could not read the Word document. Make sure it is a valid .doc file."],
+    });
+  });
+});
+
+describe("validateImportedQuestions", () => {
+  it("accepts valid objective, multiple and written questions", async () => {
+    const result = validateImportedQuestions([
+      {
+        type: "objective",
+        prompt: "Which colour model is used for print?",
+        options: ["RGB", "CMYK", "HSV", "HSL"],
+        correctOption: 1,
+        correctOptions: null,
+        points: 1,
+      },
+      {
+        type: "multiple",
+        prompt: "Which of these are primary colours?",
+        options: ["Red", "Green", "Blue", "Yellow"],
+        correctOption: null,
+        correctOptions: [0, 2],
+        points: 1,
+      },
+      {
+        type: "multiple",
+        prompt: "Pick the odd one out?",
+        options: ["Red", "Green", "Blue", "Yellow"],
+        correctOption: null,
+        correctOptions: [1], // a single correct answer is allowed after editing
+        points: 1,
+      },
+      {
+        type: "written",
+        prompt: "Explain a concept.",
+        options: null,
+        correctOption: null,
+        correctOptions: null,
+        points: 5,
+      },
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.questions).toHaveLength(4);
+      expect(result.questions[1].correctOptions).toEqual([0, 2]);
+      expect(result.questions[2].correctOptions).toEqual([1]);
+    }
+  });
+
+  it("rejects an empty list", () => {
+    expect(validateImportedQuestions([])).toEqual({ ok: false, error: "No questions to import." });
+  });
+
+  it("rejects unknown types, blank prompts and bad points", () => {
+    expect(validateImportedQuestions([{ type: "essay", prompt: "X", options: null, correctOption: null, correctOptions: null, points: 1 }])).toEqual({
+      ok: false,
+      error: 'Question 1: type must be "objective", "multiple" or "written".',
+    });
+    expect(
+      validateImportedQuestions([{ type: "written", prompt: " ", options: null, correctOption: null, correctOptions: null, points: 5 }])
+    ).toEqual({ ok: false, error: "Question 1: missing the question text." });
+    expect(
+      validateImportedQuestions([{ type: "written", prompt: "X", options: null, correctOption: null, correctOptions: null, points: 0 }])
+    ).toEqual({ ok: false, error: "Question 1: points must be a whole number between 1 and 100." });
+  });
+
+  it("rejects out-of-range correct options and missing answer keys", () => {
+    expect(
+      validateImportedQuestions([
+        { type: "objective", prompt: "Q", options: ["A", "B"], correctOption: 5, correctOptions: null, points: 1 },
+      ])
+    ).toEqual({ ok: false, error: "Question 1: the correct option must be one of the listed options." });
+    expect(
+      validateImportedQuestions([
+        { type: "multiple", prompt: "Q", options: ["A", "B", "C"], correctOption: null, correctOptions: [0, 5], points: 1 },
+      ])
+    ).toEqual({ ok: false, error: "Question 1: correct options must list valid option indexes." });
+  });
+});
+
 describe("questionTemplateCsv", () => {
   it("starts with the expected header", () => {
     const lines = questionTemplateCsv().split("\n");
@@ -398,10 +948,10 @@ describe("questionTemplateCsv", () => {
     const lines = questionTemplateCsv().split("\n");
     expect(lines).toHaveLength(4);
     expect(lines[1]).toBe(
-      "objective,Which colour model is used for print?,RGB,CMYK,HSV,HSL,B,2"
+      "objective,Which colour model is used for print?,RGB,CMYK,HSV,HSL,B,1"
     );
     expect(lines[2]).toBe(
-      'multiple,Which of these are primary colours?,Red,Green,Blue,Yellow,"A,C",2'
+      'multiple,Which of these are primary colours?,Red,Green,Blue,Yellow,"A,C",1'
     );
     expect(lines[3]).toBe(
       "written,Explain how a stacked bar chart differs from a grouped bar chart.,,,,,,5"
