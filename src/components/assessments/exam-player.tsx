@@ -16,6 +16,12 @@ import { recordViolation, saveAnswer, submitExam, type ExamSession } from "@/lib
 
 const MAX_VIOLATIONS = 3;
 const VIOLATION_COOLDOWN_MS = 2000;
+// Browsers force fullscreen out on the Escape key and don't let scripts stop
+// it, so the anti-cheat rules for Escape are a fallback: submit once it is
+// pressed more than twice, or after the trainee stays away from the exam
+// screen for 10 seconds.
+const ESC_SUBMIT_LIMIT = 3;
+const ESC_LEAVE_MS = 10_000;
 
 function parseSelected(value: string | undefined): number[] {
   if (!value) return [];
@@ -71,6 +77,8 @@ export function ExamPlayer({
   const submittingRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const answersRef = useRef(answers);
+  const escCount = useRef(0);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     answersRef.current = answers;
@@ -109,6 +117,13 @@ export function ExamPlayer({
         );
       }
     });
+  }
+
+  function clearExitTimer() {
+    if (exitTimer.current) {
+      clearTimeout(exitTimer.current);
+      exitTimer.current = null;
+    }
   }
 
   function scheduleSave(nextAnswers: Record<string, string>, nextIndex: number) {
@@ -177,25 +192,67 @@ export function ExamPlayer({
       if (document.visibilityState === "hidden") handleViolation();
     };
     const onBlur = () => handleViolation();
+    // Every Escape press counts — more than two and the exam submits. This
+    // runs on keydown because after the first press the browser is already
+    // out of fullscreen, so later presses fire no fullscreenchange event.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || submittingRef.current || finished) return;
+      escCount.current += 1;
+      if (escCount.current >= ESC_SUBMIT_LIMIT) {
+        clearExitTimer();
+        void doSubmit(
+          `Auto-submitted — Escape was pressed ${escCount.current} times. Ask a trainer to override if needed.`
+        );
+      }
+    };
+    // Leaving fullscreen (which is what Escape does) starts a 10-second
+    // clock: if the trainee doesn't come back in time, the exam submits.
     const onFullscreen = () => {
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      const inFullscreen = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
+      if (inFullscreen) {
+        clearExitTimer(); // back in the exam — the clock is cancelled
+        return;
+      }
+      if (submittingRef.current || finished) return;
+      clearExitTimer();
+      exitTimer.current = setTimeout(() => {
+        exitTimer.current = null;
+        void doSubmit(
+          "Auto-submitted — you left the exam screen for more than 10 seconds. Ask a trainer to override if needed."
+        );
+      }, ESC_LEAVE_MS);
+      handleViolation();
+      // Best effort only: after Escape, browsers reject fullscreen requests
+      // until the next user gesture (see onPointerDown below).
+      enterFullscreen();
+    };
+    // A click while out of fullscreen is a user gesture, so the browser
+    // accepts a fullscreen request — the trainee can return within the
+    // 10-second window instead of being auto-submitted.
+    const onPointerDown = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
       if (!document.fullscreenElement && !doc.webkitFullscreenElement) {
-        handleViolation();
         enterFullscreen();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
+    document.addEventListener("keydown", onKeyDown);
     document.addEventListener("fullscreenchange", onFullscreen);
     document.addEventListener("webkitfullscreenchange", onFullscreen);
+    document.addEventListener("pointerdown", onPointerDown);
 
     return () => {
       clearInterval(timer);
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      clearExitTimer();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", onBlur);
+      document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("webkitfullscreenchange", onFullscreen);
+      document.removeEventListener("pointerdown", onPointerDown);
       exitFullscreen();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

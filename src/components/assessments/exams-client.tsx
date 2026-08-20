@@ -509,23 +509,29 @@ export function ExamsClient({
                                 {canOverride ? (
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button variant="outline" size="sm" className="gap-1.5 text-primary">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5 text-primary"
+                                        title="Reopen the exam for this trainee"
+                                      >
                                         <KeyRound className="h-4 w-4" />
-                                        Override
+                                        Reopen
                                       </Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
-                                        <AlertDialogTitle>Allow trainee to resume?</AlertDialogTitle>
+                                        <AlertDialogTitle>Reopen this exam for the trainee?</AlertDialogTitle>
                                         <AlertDialogDescription>
                                           The trainee will continue from where they left off, with their answers
-                                          intact and the window-switch counter reset.
+                                          intact and the window-switch counter reset. This is only allowed while
+                                          the exam is still open.
                                         </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction onClick={() => run(submission.id, () => overrideSubmission(submission.id))}>
-                                          Grant override
+                                          Reopen exam
                                         </AlertDialogAction>
                                       </AlertDialogFooter>
                                     </AlertDialogContent>
