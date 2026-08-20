@@ -214,7 +214,9 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
 async function parseDocxQuestions(file: File): Promise<ImportResult> {
   let text: string;
   try {
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+    // The Node build of mammoth accepts a Buffer (the browser build takes an
+    // ArrayBuffer — passing one here throws "Could not find file in options").
+    const result = await mammoth.extractRawText({ buffer: Buffer.from(await file.arrayBuffer()) });
     text = result.value;
   } catch {
     return { ok: false, errors: ["Could not read the Word document. Make sure it is a valid .docx file."] };
