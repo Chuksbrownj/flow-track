@@ -449,9 +449,13 @@ export function parseQuestionText(text: string): ImportResult {
     }
 
     const numberMatch = QUESTION_NUMBER.exec(prompt);
+    // The paper's own numbering ("1. ", "Q3) ", "Question 2: ") is dropped from
+    // the stored text — the app numbers questions itself in the preview and
+    // the exam player, so keeping it would show "1. 1. …".
+    const storedPrompt = numberMatch ? prompt.slice(numberMatch[0].length).trim() : prompt;
     parsed.push({
       label,
-      prompt,
+      prompt: storedPrompt,
       optionLines,
       inlineLetters: correct ? parseAnswerLetters(correct) : null,
       points: resolvedPoints,
@@ -555,21 +559,27 @@ export function parseQuestionText(text: string): ImportResult {
 
 /**
  * True when a line starts the trailing answer-key section: "ANSWERS",
- * "ANSWER KEY", "Key:", "SECTION D: ANSWERS" or "Answers: 1-B, 2-A". An
- * inline "Answer: B" line (one letter and nothing else after the colon) is
- * deliberately not treated as a key header.
+ * "ANSWER KEY", "Key:", "SECTION D: ANSWERS" or "Answers: 1-B, 2-A". Inline
+ * "Answer: B" / "Answer: A,C" lines and instruction sentences like "Answer
+ * the following questions." are deliberately not treated as key headers.
  */
 function isAnswerKeyHeader(line: string): boolean {
   const match =
-    /^(?:(?:section|part)\s+[A-Z0-9]+\s*[:\-–—]?\s*)?(?:answer\s*(?:key|sheet)|marking\s*(?:guide|scheme)|suggested\s*answers?|solutions?|answers?|key)\s*[::\-–—]?\s*([A-Fa-f]?)(.*)$/i.exec(
+    /^(?:(?:section|part)\s+[A-Z0-9]+\s*[:\-–—]?\s*)?(?:answer\s*(?:key|sheet)|marking\s*(?:guide|scheme)|suggested\s*answers?|solutions?|answers?|key)([::\-–—]?)\s*([A-Fa-f]?)(.*)$/i.exec(
       line.trim()
     );
   if (!match) return false;
+  const separator = match[1];
+  const letter = match[2] ?? "";
+  const rest = match[3] ?? "";
+  // "Answer the following questions." — an instruction, not a key header: no
+  // separator and free-text after the keyword.
+  if (separator === "" && letter === "" && rest.trim() !== "") return false;
   // "Answer: B", "Answer: A,C" and "Answer: A and C" are inline answers for
-  // the previous question, not a key header — the remainder after the keyword
-  // is nothing but answer letters and separators. Real key headers carry
-  // numbers, question references or plain text ("Answers: 1-B, 2-A").
-  const remainder = ((match[1] ?? "") + match[2]).trim();
+  // the previous question — the remainder after the colon is nothing but
+  // answer letters and separators. Real key headers carry numbers, question
+  // references or plain text ("Answers: 1-B, 2-A").
+  const remainder = (letter + rest).trim();
   if (
     remainder !== "" &&
     /^[A-Fa-f](?:\s*(?:,|;|&|\/|and\s+|\s)\s*[A-Fa-f])*$/.test(remainder)
@@ -640,6 +650,21 @@ function isHeaderLine(line: string): boolean {
   if (/^(?:answer|attempt|choose)\s+(?:all|any)\b/i.test(text)) return true;
   if (/^(?:instructions?|duration|time\s+allowed|total\s+marks?|maximum\s+marks?)\b/i.test(text)) return true;
   if (/^(?:the end|end of (?:the )?(?:paper|examination|exam|test)|good luck)\b/i.test(text)) return true;
+
+  // Full instruction sentences that are never questions ("For each question,
+  // choose the best answer.", "Read the questions carefully.", …).
+  if (
+    /^(?:for|in)\s+(?:each|every)\s+question\b/i.test(text) ||
+    /^(?:choose|select|pick|circle|underline)\s+(?:the\s+)?(?:best|most\s+appropriate|correct|right|answer|option|alternative)\b/i.test(text) ||
+    /^(?:answer|attempt|write)\s+(?:the\s+)?(?:following\s+)?(?:questions?|items?)\b/i.test(text) ||
+    /^(?:this|the)\s+(?:exam|examination|test|paper|assessment|quiz)\s+(?:consists|comprises|has|contains|is\s+divided)\b/i.test(text) ||
+    /^(?:each|every|all)\s+questions?\s+(?:carries|carry|are\s+worth|is\s+worth|worth)\b/i.test(text) ||
+    /^(?:read|study)\s+(?:the\s+)?(?:questions?|instructions?|passage)\b/i.test(text) ||
+    /^(?:write|provide|give)\s+your\s+(?:answers?|responses?)\b/i.test(text) ||
+    /^(?:do\s+not|please\s+do\s+not)\s+write\b/i.test(text)
+  ) {
+    return true;
+  }
 
   // Section/paper headers start with a header word…
   if (!/^(?:section|part|module|unit|paper|exam|examination|quiz|assessment|exercise|practical|comprehension|mock|assignment|objective|theory|written|essay|test)\b/i.test(text)) return false;

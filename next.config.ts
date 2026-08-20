@@ -26,6 +26,13 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    serverActions: {
+      // Question-paper uploads (PDF/docx with images) can exceed the 1MB
+      // default; match the 5MB cap the import parser enforces per file.
+      bodySizeLimit: "5mb",
+    },
+  },
   async headers() {
     return [
       {

@@ -447,7 +447,7 @@ describe("parseQuestionFile — Markdown and plain text", () => {
     expect(result.questions).toEqual([
       {
         type: "objective",
-        prompt: "1. What colour model is used for print?",
+        prompt: "What colour model is used for print?",
         options: ["RGB", "CMYK", "HSV", "HSL"],
         correctOption: 1,
         correctOptions: null,
@@ -455,7 +455,7 @@ describe("parseQuestionFile — Markdown and plain text", () => {
       },
       {
         type: "multiple",
-        prompt: "2. Which of these are primary colours?",
+        prompt: "Which of these are primary colours?",
         options: ["Red", "Green", "Blue", "Yellow"],
         correctOption: null,
         correctOptions: [0, 2], // A, C
@@ -463,7 +463,7 @@ describe("parseQuestionFile — Markdown and plain text", () => {
       },
       {
         type: "written",
-        prompt: "3. Explain how a stacked bar chart differs from a grouped bar chart.",
+        prompt: "Explain how a stacked bar chart differs from a grouped bar chart.",
         options: null,
         correctOption: null,
         correctOptions: null,
@@ -562,6 +562,51 @@ describe("parseQuestionFile — document structure is skipped", () => {
         points: 5,
       },
     ]);
+  });
+
+  it("skips common exam instruction sentences", async () => {
+    const content = [
+      "For each question, choose the best answer.",
+      "Read the questions carefully.",
+      "Answer the following questions.",
+      "Each question carries 1 mark.",
+      "This exam consists of 15 questions.",
+      "Write your answers in the space provided.",
+      "1. What colour model is used for print?",
+      "A) RGB",
+      "B) CMYK",
+      "C) HSV",
+      "D) HSL",
+      "Answer: B",
+      "2. Explain how a stacked bar chart differs from a grouped bar chart.",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(2);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What colour model is used for print?", // leading "1. " stripped
+      options: ["RGB", "CMYK", "HSV", "HSL"],
+      correctOption: 1,
+    });
+    expect(result.questions?.[1]).toMatchObject({
+      type: "written",
+      prompt: "Explain how a stacked bar chart differs from a grouped bar chart.", // "2. " stripped
+    });
+  });
+
+  it("keeps written questions that merely begin with an instruction word", async () => {
+    const result = await parseQuestionFile(
+      new File(["Choose one of the following and discuss its importance."], "paper.txt")
+    );
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "written",
+      prompt: "Choose one of the following and discuss its importance.",
+    });
   });
 
   it("drops a lower-case caption-style opening title", async () => {
