@@ -87,6 +87,14 @@ export function ExamPlayer({
   const finished =
     session.status === "submitted" || session.status === "graded" || result !== null;
 
+  // The anti-cheat listeners are registered once on mount, so they would
+  // otherwise keep reading the first render's `finished` value and could
+  // double-submit from the result screen. Keep it in a ref instead.
+  const finishedRef = useRef(finished);
+  useEffect(() => {
+    finishedRef.current = finished;
+  }, [finished]);
+
   async function doSubmit(reason?: string) {
     if (submittingRef.current) return;
     submittingRef.current = true;
@@ -104,7 +112,7 @@ export function ExamPlayer({
   }
 
   function handleViolation() {
-    if (submittingRef.current || finished) return;
+    if (submittingRef.current || finishedRef.current) return;
     const now = Date.now();
     if (now - lastViolation.current < VIOLATION_COOLDOWN_MS) return;
     lastViolation.current = now;
@@ -196,7 +204,7 @@ export function ExamPlayer({
     // runs on keydown because after the first press the browser is already
     // out of fullscreen, so later presses fire no fullscreenchange event.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || submittingRef.current || finished) return;
+      if (event.key !== "Escape" || submittingRef.current || finishedRef.current) return;
       escCount.current += 1;
       if (escCount.current >= ESC_SUBMIT_LIMIT) {
         clearExitTimer();
@@ -214,7 +222,7 @@ export function ExamPlayer({
         clearExitTimer(); // back in the exam — the clock is cancelled
         return;
       }
-      if (submittingRef.current || finished) return;
+      if (submittingRef.current || finishedRef.current) return;
       clearExitTimer();
       exitTimer.current = setTimeout(() => {
         exitTimer.current = null;
