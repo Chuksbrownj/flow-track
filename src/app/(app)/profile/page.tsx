@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
-import { ArrowRight, CalendarCheck2, UserCircle } from "lucide-react";
-import Link from "next/link";
+import { UserCircle } from "lucide-react";
 import { ProfileView } from "@/components/profile/profile-view";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
@@ -83,24 +82,6 @@ export default async function ProfilePage() {
           />
         </CardContent>
       </Card>
-
-      <Link
-        href="/attendance"
-        className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-muted/50"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gold/20 text-gold-foreground">
-            <CalendarCheck2 className="h-4 w-4" />
-          </div>
-          <div>
-            <p className="text-sm font-medium">Attendance</p>
-            <p className="text-xs text-muted-foreground">
-              Check in and view your attendance record.
-            </p>
-          </div>
-        </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground" />
-      </Link>
     </div>
   );
 }

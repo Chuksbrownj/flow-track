@@ -135,10 +135,6 @@ export function TraineeExams({ exams }: { exams: TraineeExamRow[] }) {
                           Awaiting grading
                         </Badge>
                       ) : null}
-                      <Button size="sm" className="gap-1.5" onClick={() => open(exam.id)}>
-                        <GraduationCap className="h-4 w-4" />
-                        {awaitingGrading ? "View submission" : "View result"}
-                      </Button>
                     </>
                   ) : exam.takeable ? (
                     <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => open(exam.id)}>

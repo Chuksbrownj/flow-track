@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { trainingSchedule } from "@/db/schema";
 import { requireStaff } from "@/lib/auth-guard";
-import { isUuid, isValidUrl, validateSchedule } from "@/lib/validation";
+import { isUuid, validateSchedule } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 
 import { value, type ActionResult } from "@/lib/actions/utils";
@@ -13,10 +13,6 @@ import { value, type ActionResult } from "@/lib/actions/utils";
 export type { ActionResult };
 
 function parseInput(formData: FormData) {
-  const googleFormUrl = value(formData, "googleFormUrl");
-  if (googleFormUrl && !isValidUrl(googleFormUrl)) {
-    return { error: "The Google Form link must be a valid http(s) URL." as const };
-  }
   return {
     error: null,
     input: {
@@ -26,7 +22,6 @@ function parseInput(formData: FormData) {
       startTime: value(formData, "startTime"),
       endTime: value(formData, "endTime"),
       description: value(formData, "description"),
-      googleFormUrl: googleFormUrl || null,
     },
   };
 }
@@ -49,7 +44,6 @@ export async function createSession(formData: FormData): Promise<ActionResult> {
       startTime: input.startTime,
       endTime: input.endTime,
       description: input.description || null,
-      googleFormUrl: input.googleFormUrl,
     });
   } catch {
     return { ok: false, error: "Could not create the session. Try again." };
@@ -90,7 +84,6 @@ export async function updateSession(id: string, formData: FormData): Promise<Act
         startTime: input.startTime,
         endTime: input.endTime,
         description: input.description || null,
-        googleFormUrl: input.googleFormUrl,
       })
       .where(eq(trainingSchedule.id, id));
   } catch {

@@ -1,10 +1,10 @@
 import { desc, eq } from "drizzle-orm";
-import { Download, BookOpen, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-guard";
 import { db } from "@/db/client";
 import { assessmentScores, courses, trainees, trainingSchedule } from "@/db/schema";
-import { formatDay, formatMonth, formatTime, todayStr } from "@/lib/date";
+import { formatDay, formatMonth, formatTime, formatWeek, todayStr } from "@/lib/date";
 
 export const metadata = { title: "My dashboard" };
 
@@ -48,19 +48,28 @@ export default async function PortalPage() {
       .limit(3),
   ]);
 
-  const latestWeek = latestRows[0]?.week ?? null;
-  const latestRowsForWeek = latestRows.filter((row) => row.week === latestWeek);
-  const scoreEntries = courseRows.map((course) => {
-    const match = latestRowsForWeek.find((row) => row.courseId === course.id);
-    return { label: course.name, value: match?.score ?? null };
-  });
-  const recorded = scoreEntries
-    .map((entry) => entry.value)
-    .filter((value): value is number => value !== null);
+  // Latest score per course — latestRows is already ordered newest week first,
+  // so the first row seen for each course is its most recent assessment.
+  const latestByCourse = new Map<string, { week: string; score: number }>();
+  for (const row of latestRows) {
+    if (!latestByCourse.has(row.courseId)) {
+      latestByCourse.set(row.courseId, { week: row.week, score: row.score });
+    }
+  }
+  const latestAssessments = [...latestByCourse.entries()].map(([courseId, entry]) => ({
+    courseId,
+    week: entry.week,
+    score: entry.score,
+  }));
+
+  // GPA / Credits are cumulative across every recorded week, not just the latest.
+  const recorded = latestRows.map((row) => row.score);
   const average =
     recorded.length === 0
       ? null
       : Math.round((recorded.reduce((sum, value) => sum + value, 0) / recorded.length) * 10) / 10;
+  // Each course a trainee has been assessed in earns 3 credits (of 60).
+  const earnedCredits = latestByCourse.size * 3;
 
   const isPending = trainee.status === "pending";
 
@@ -76,15 +85,18 @@ export default async function PortalPage() {
               You have {latestRows.length} recent assessments. Keep up the good work on your recent modules.
             </p>
           </div>
-          <div className="flex gap-6">
-            <div className="text-center">
-              <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wide">Overall GPA</p>
-              <p className="text-2xl font-bold text-primary">{average !== null ? (average / 25).toFixed(1) : "—"}</p>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex gap-6">
+              <div className="text-center">
+                <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wide">Overall GPA</p>
+                <p className="text-2xl font-bold text-primary">{average !== null ? (average / 25).toFixed(1) : "—"}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wide">Credits</p>
+                <p className="text-2xl font-bold text-on-surface">{earnedCredits}/60</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wide">Credits</p>
-              <p className="text-2xl font-bold text-on-surface">{recorded.length * 3}/60</p>
-            </div>
+            <p className="text-[11px] text-on-surface-variant">Cumulative across all recorded weeks</p>
           </div>
         </div>
       </div>
@@ -110,27 +122,25 @@ export default async function PortalPage() {
                 <tr className="border-b border-outline-variant/20 text-left">
                   <th className="pb-3 text-sm font-medium text-on-surface-variant">Course</th>
                   <th className="pb-3 text-sm font-medium text-on-surface-variant">Assessment</th>
-                  <th className="pb-3 text-sm font-medium text-on-surface-variant">Date</th>
                   <th className="pb-3 text-sm font-medium text-on-surface-variant text-right">Score</th>
                 </tr>
               </thead>
               <tbody>
-                {latestRowsForWeek.length === 0 ? (
+                {latestAssessments.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-sm text-on-surface-variant">
+                    <td colSpan={3} className="py-8 text-center text-sm text-on-surface-variant">
                       No assessments recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  latestRowsForWeek.map((row, i) => {
+                  latestAssessments.map((row) => {
                     const course = courseRows.find((c) => c.id === row.courseId);
                     return (
-                      <tr key={i} className="border-b border-outline-variant/10 last:border-0 transition-colors hover:bg-surface-container-low/50">
+                      <tr key={row.courseId} className="border-b border-outline-variant/10 last:border-0 transition-colors hover:bg-surface-container-low/50">
                         <td className="py-3 text-sm font-medium text-on-surface">{course?.name ?? "Unknown"}</td>
-                        <td className="py-3 text-sm text-on-surface-variant">Week {row.week}</td>
-                        <td className="py-3 text-sm text-on-surface-variant">Recent</td>
+                        <td className="py-3 text-sm text-on-surface-variant">{formatWeek(row.week)}</td>
                         <td className="py-3 text-sm font-semibold text-right text-primary tabular-nums">
-                          {row.score !== null ? `${row.score}%` : "—"}
+                          {row.score}%
                         </td>
                       </tr>
                     );
@@ -142,17 +152,6 @@ export default async function PortalPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col items-center justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 text-center shadow-sm transition-colors hover:border-primary/30">
-              <BookOpen className="h-8 w-8 text-primary/60 mb-2" />
-              <p className="text-sm font-medium text-on-surface">Register Course</p>
-            </div>
-            <div className="flex flex-col items-center justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 text-center shadow-sm transition-colors hover:border-primary/30">
-              <Download className="h-8 w-8 text-primary/60 mb-2" />
-              <p className="text-sm font-medium text-on-surface">Transcript</p>
-            </div>
-          </div>
-
           <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-5 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold text-on-surface">Upcoming</h2>
             <div className="space-y-3">

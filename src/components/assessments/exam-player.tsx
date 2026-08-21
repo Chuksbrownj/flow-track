@@ -80,6 +80,7 @@ export function ExamPlayer({
   const answersRef = useRef(answers);
   const escCount = useRef(0);
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDoneRef = useRef(onDone);
 
   useEffect(() => {
     answersRef.current = answers;
@@ -94,6 +95,50 @@ export function ExamPlayer({
   const finishedRef = useRef(finished);
   useEffect(() => {
     finishedRef.current = finished;
+  }, [finished]);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  });
+
+  // After a fresh submission, send the trainee back to the assessments list
+  // automatically instead of leaving them on the result screen.
+  useEffect(() => {
+    if (!result) return;
+    const timer = setTimeout(() => onDoneRef.current(), 2500);
+    return () => clearTimeout(timer);
+  }, [result]);
+
+  // Exam-mode lockdown while an attempt is in progress: strip the app chrome
+  // and block copy/paste/context-menu so only the exam is interactable.
+  useEffect(() => {
+    if (finished) return;
+
+    const blockClipboard = (event: ClipboardEvent) => event.preventDefault();
+    const blockContext = (event: MouseEvent) => event.preventDefault();
+    const blockShortcuts = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "c" || key === "v" || key === "x" || key === "a") {
+        event.preventDefault();
+      }
+    };
+
+    document.body.classList.add("exam-mode");
+    document.addEventListener("copy", blockClipboard);
+    document.addEventListener("cut", blockClipboard);
+    document.addEventListener("paste", blockClipboard);
+    document.addEventListener("contextmenu", blockContext);
+    document.addEventListener("keydown", blockShortcuts);
+
+    return () => {
+      document.body.classList.remove("exam-mode");
+      document.removeEventListener("copy", blockClipboard);
+      document.removeEventListener("cut", blockClipboard);
+      document.removeEventListener("paste", blockClipboard);
+      document.removeEventListener("contextmenu", blockContext);
+      document.removeEventListener("keydown", blockShortcuts);
+    };
   }, [finished]);
 
   async function doSubmit(reason?: string) {
@@ -343,8 +388,8 @@ export function ExamPlayer({
   const lowTime = remainingMs < 5 * 60_000;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <div className="sticky top-14 z-20 -mx-1 rounded-xl border bg-card/95 px-4 py-3 shadow-sm backdrop-blur">
+    <div className="mx-auto max-w-2xl space-y-4 select-none">
+      <div className="sticky top-0 z-20 -mx-1 rounded-xl border bg-card/95 px-4 py-3 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{session.title}</p>

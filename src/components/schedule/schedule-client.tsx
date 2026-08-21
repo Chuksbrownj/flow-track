@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,17 +72,6 @@ function SessionCard({
           {session.description ? (
             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{session.description}</p>
           ) : null}
-          {session.googleFormUrl ? (
-            <a
-              href={session.googleFormUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Submit assignment
-            </a>
-          ) : null}
         </div>
       </div>
       {readOnly ? null : (
@@ -150,7 +139,7 @@ export function ScheduleClient({
           <h1 className="text-2xl font-semibold text-on-surface">Training Schedule</h1>
           <p className="text-sm text-muted-foreground">
             {readOnly
-              ? "Training days are Mondays, Wednesdays and Fridays. Use the submission form to send your work."
+              ? "Training days are Mondays, Wednesdays and Fridays."
               : "Plan and manage training sessions."}
           </p>
         </div>

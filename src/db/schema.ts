@@ -217,8 +217,6 @@ export const trainingSchedule = pgTable("training_schedule", {
   startTime: text("start_time").notNull(),
   endTime: text("end_time").notNull(),
   description: text("description"),
-  /** External Google Form where students submit work for this training day. */
-  googleFormUrl: text("google_form_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

@@ -30,7 +30,6 @@ export type SessionRow = {
   startTime: string;
   endTime: string;
   description: string | null;
-  googleFormUrl: string | null;
 };
 
 export function ScheduleForm({
@@ -119,19 +118,6 @@ export function ScheduleForm({
             required
           />
         </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="googleFormUrl">Assignment submission form (Google Form link)</Label>
-        <Input
-          id="googleFormUrl"
-          name="googleFormUrl"
-          type="url"
-          placeholder="https://forms.gle/..."
-          defaultValue={session?.googleFormUrl ?? ""}
-        />
-        <p className="text-xs text-muted-foreground">
-          Students submit this day&apos;s work through this external form. Leave empty if not needed.
-        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="description">Description (optional)</Label>

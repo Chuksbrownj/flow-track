@@ -23,7 +23,6 @@ export default async function SchedulePage() {
     startTime: session.startTime,
     endTime: session.endTime,
     description: session.description,
-    googleFormUrl: session.googleFormUrl,
   }));
 
   return <ScheduleClient initialSessions={sessions} readOnly={readOnly} />;

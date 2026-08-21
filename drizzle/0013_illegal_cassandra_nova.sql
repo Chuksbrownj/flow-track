@@ -1,0 +1,1 @@
+ALTER TABLE "training_schedule" DROP COLUMN "google_form_url";

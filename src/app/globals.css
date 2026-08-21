@@ -215,3 +215,15 @@
     @apply font-sans;
   }
 }
+
+/* Exam mode lockdown: hide app chrome and let the exam fill the viewport. */
+body.exam-mode aside,
+body.exam-mode header,
+body.exam-mode nav {
+  display: none !important;
+}
+
+body.exam-mode main {
+  max-width: none !important;
+  padding: 0 !important;
+}

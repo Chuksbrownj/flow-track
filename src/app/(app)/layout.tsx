@@ -57,7 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </header>
           <main className="mx-auto w-full max-w-[1440px] flex-1 p-4 pb-20 md:p-6 md:pb-6 lg:px-8 lg:py-8">{children}</main>
         </div>
-        {role === "student" ? <MobileBottomNav unreadCount={unreadNotifications} /> : null}
+        {role === "student" ? <MobileBottomNav /> : null}
       </div>
     </SidebarProvider>
   );

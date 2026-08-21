@@ -130,8 +130,8 @@ export default async function HowToUsePage() {
 
         <Section icon={CalendarDays} title="Schedule & assignments">
           <ul className="space-y-2">
-            <Item>Add training sessions in Training Schedule. Attach the Google Form link so students can submit work externally.</Item>
-            <Item>Students see the schedule read-only with their Submit Assignment links.</Item>
+            <Item>Add training sessions in Training Schedule to plan each training day.</Item>
+            <Item>Students see the schedule read-only.</Item>
           </ul>
         </Section>
       </div>
