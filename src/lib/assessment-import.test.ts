@@ -731,6 +731,50 @@ describe("parseQuestionFile — document structure is skipped", () => {
     expect(result.imported).toBe(20);
   });
 
+  it("strips double-printed numbers and keeps every question after blank answer spaces", async () => {
+    // Word papers often print the number twice (an auto-number plus a typed
+    // number) and separate written questions with blank "Answer: ___" lines.
+    // The blank answer spaces must not truncate the paper or become questions.
+    const content = [
+      "12. 12. Explain the difference between RGB and CMYK color modes and give one use for each.",
+      "Answer: _______________________________________________________________",
+      "_______________________________________________________________",
+      "13. 13. What is typography? Mention at least three things a designer should consider when choosing fonts.",
+      "Answer: _______________________________________________________________",
+      "_______________________________________________________________",
+      "14. 14. Explain any three principles of graphic design and give a simple example of each.",
+      "Answer: _______________________________________________________________",
+      "_______________________________________________________________",
+      "15. 15. Describe the basic steps you would follow to create a simple poster for an event.",
+      "Answer: _______________________________________________________________",
+      "_______________________________________________________________",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(4);
+    expect(result.questions).toEqual([
+      expect.objectContaining({
+        type: "written",
+        prompt: "Explain the difference between RGB and CMYK color modes and give one use for each.",
+      }),
+      expect.objectContaining({
+        type: "written",
+        prompt:
+          "What is typography? Mention at least three things a designer should consider when choosing fonts.",
+      }),
+      expect.objectContaining({
+        type: "written",
+        prompt: "Explain any three principles of graphic design and give a simple example of each.",
+      }),
+      expect.objectContaining({
+        type: "written",
+        prompt: "Describe the basic steps you would follow to create a simple poster for an event.",
+      }),
+    ]);
+  });
+
   it("drops instruction lines instead of importing them as numbered questions", async () => {
     const content = [
       "Use blue or black pen.",

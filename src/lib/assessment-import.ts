@@ -25,10 +25,17 @@ const OPTION_LETTERS = ["a", "b", "c", "d", "e", "f"];
 // A question-number prefix like "1.", "1)", "Q1." or "Question 2:".
 const QUESTION_NUMBER = /^\s*(?:question\s+)?q?\s*(\d{1,3})\s*[.):\-–—]\s+/i;
 
-/** Strips a leading question-number prefix so the app can number questions itself. */
+/** Strips repeated leading question-number prefixes ("12. 12. …") so the app can number questions itself. */
 function stripQuestionNumber(text: string): string {
-  const match = QUESTION_NUMBER.exec(text);
-  return match ? text.slice(match[0].length).trim() : text;
+  let result = text;
+  // Papers sometimes print the number twice (a Word auto-number plus a typed
+  // number). Strip up to a few prefixes so only the question text remains.
+  for (let i = 0; i < 4; i += 1) {
+    const match = QUESTION_NUMBER.exec(result);
+    if (!match) break;
+    result = result.slice(match[0].length).trim();
+  }
+  return result;
 }
 
 // Default marks when a file doesn't state points: option questions carry 1
@@ -354,13 +361,25 @@ export function parseQuestionText(text: string): ImportResult {
   const POINTS_LINE = /^points\s*[::]?\s*(\d+)$/i;
   // Page numbers / "Page 1 of 2" hints left in extracted text — never questions.
   const JUNK_LINE = /^(?:page\s*)?\d+(?:\s*(?:of|\/)\s*\d+)?$/i;
+  // Blank answer spaces ("Answer: ______", "Ans: …") and their bare
+  // continuation lines ("______") are answer areas — never questions or answer
+  // keys. Drop them so they can't truncate the paper or become spurious
+  // written questions.
+  const ANSWER_SPACE_LINE = /^(?:answer|ans|correct\s*answer|correct)\s*[:\-–—]\s*[_\-–—.\s]*$/i;
+  const BLANK_FILL_LINE = /^[_\-–—.\s]+$/;
   const lines = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     // Markdown headings (# / ## …) are document structure, never questions.
     .filter((raw) => !/^#{1,6}\s+/.test(raw.trim()))
     .map(cleanLine)
-    .filter((line) => line !== "" && !JUNK_LINE.test(line));
+    .filter(
+      (line) =>
+        line !== "" &&
+        !JUNK_LINE.test(line) &&
+        !ANSWER_SPACE_LINE.test(line) &&
+        !BLANK_FILL_LINE.test(line)
+    );
 
   // Answers are often printed as a key at the end of the paper
   // ("ANSWER KEY", "Answers: 1-B, 2-A"). Everything from that header onwards
