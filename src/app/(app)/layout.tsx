@@ -41,7 +41,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           openTicketCount={openTicketCount}
           userName={displayName}
           userRole={roleLabel}
-          userId={session.user.id ?? undefined}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:px-6">
