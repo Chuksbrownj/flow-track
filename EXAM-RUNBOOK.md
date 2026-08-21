@@ -19,8 +19,9 @@ Assessments → Exams (admin portal). All steps below happen there unless noted.
 
 - **Trainees (N)** button on the card — who has started (in progress) vs. submitted.
 - **Results (N)** button expands the card with per-attempt details: status, auto score, % badge, and any window-switch count.
-- Anti-cheat: exams run full-screen. Pressing Escape more than twice, or leaving full-screen for more than 10 seconds, auto-submits the attempt. Time-up also auto-submits. Trainees can stay idle on the exam screen as long as they like — only Escape/leaving triggers the clock.
+- Anti-cheat: exams run full-screen. Pressing Escape more than twice (3rd press), or leaving full-screen for more than 10 seconds, auto-submits the attempt. Time-up also auto-submits. Trainees can stay idle on the exam screen as long as they like — only Escape/leaving triggers the clock.
 - Auto-submitted attempts show as **Submitted**; the trainee sees the reason.
+- Re-opening a **finished** attempt (e.g. **View result**) is read-only: the countdown and anti-cheat listeners don't run again, so it never re-submits or shows a "Time is up" toast.
 
 ## Reopen flow (a trainee)
 
@@ -28,7 +29,7 @@ Use when an attempt ended early (e.g. auto-submitted) but the trainee should con
 
 1. Exam card → **Trainees** dialog.
 2. **Reopen** next to the trainee → confirm **Reopen exam** (toast: "Override granted").
-3. The trainee's button becomes **Resume** — they continue where they left off with their answers kept; the countdown restarts.
+3. The trainee's button becomes **Resume** — they continue where they left off with their answers kept; the countdown restarts. (Re-opening a finished attempt via **View result** is read-only — no countdown, no re-submit.)
 
 To reopen the whole exam for everyone (after closing it by mistake), use the card's **Reopen** button — trainees are notified again.
 
@@ -45,7 +46,8 @@ To reopen the whole exam for everyone (after closing it by mistake), use the car
 |---|---|
 | Exam duration | 1–240 minutes (set at creation) |
 | Closing time | must be ≥ 1 minute in the future |
-| Auto-submit triggers | Escape > 2×, out of full-screen > 10s, time up |
-| Window-switch limit | 3 switches auto-submit the attempt |
-| Reopen a trainee | only while the exam is open |
+| Auto-submit triggers | Escape ≥ 3×, out of full-screen > 10s, time up |
+| Window-switch limit | 3 switches (blur / tab switch / leaving full-screen) auto-submit |
+| Re-open a finished attempt (View result) | read-only — no countdown, no re-submit |
+| Reopen a trainee's attempt (to resume) | only while the exam is open |
 | Written grading | required before the attempt shows a final grade |
