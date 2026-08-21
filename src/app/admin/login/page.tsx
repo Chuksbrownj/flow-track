@@ -21,7 +21,7 @@ export default async function AdminLoginPage({
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#fff8e1] via-background to-[#e0f7fa] p-4">
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { AlertCircle, Loader2, Mail, Lock } from "lucide-react";
+import { AlertCircle, Loader2, Mail, Lock, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,11 +14,13 @@ export function LoginForm({
   identifierPlaceholder = "you@example.com",
   buttonLabel = "Sign in",
   showRememberMe = false,
+  buttonVariant = "gold",
 }: {
   identifierLabel?: string;
   identifierPlaceholder?: string;
   buttonLabel?: string;
   showRememberMe?: boolean;
+  buttonVariant?: "gold" | "primary";
 } = {}) {
   const [error, formAction, isPending] = useActionState(authenticate, undefined);
 
@@ -78,12 +80,19 @@ export function LoginForm({
       ) : null}
       <Button
         type="submit"
-        className="w-full bg-gold hover:bg-gold/90 text-gold-foreground font-semibold"
+        className={`w-full font-semibold ${
+          buttonVariant === "gold"
+            ? "bg-gold hover:bg-gold/90 text-gold-foreground"
+            : "bg-primary hover:bg-primary/90 text-primary-foreground"
+        }`}
         disabled={isPending}
       >
         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {isPending ? "Signing in..." : buttonLabel}
-        {!isPending && (
+        {!isPending && buttonVariant === "gold" && (
+          <LogIn className="ml-2 h-4 w-4" />
+        )}
+        {!isPending && buttonVariant === "primary" && (
           <span className="ml-2">→</span>
         )}
       </Button>

@@ -19,7 +19,7 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-[#fff8e1] via-background to-[#e0f7fa] p-4">
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
@@ -53,7 +53,7 @@ export default async function LoginPage({
             Account created. A trainer will confirm your registration before you can sign in.
           </p>
         ) : null}
-        <LoginForm identifierLabel="Registration Code" identifierPlaceholder="e.g. 123456" buttonLabel="Sign in" />
+        <LoginForm identifierLabel="Registration Code" identifierPlaceholder="e.g. 123456" buttonLabel="Sign in" buttonVariant="primary" />
         <p className="mt-6 text-center text-xs text-muted-foreground">
           New student?{" "}
           <Link href="/register" className="font-medium text-primary underline-offset-3 hover:underline">
