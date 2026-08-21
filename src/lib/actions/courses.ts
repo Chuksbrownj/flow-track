@@ -8,11 +8,7 @@ import { requireMasterAdmin, requireUser } from "@/lib/auth-guard";
 import { recordAudit } from "@/lib/audit";
 import { isValidCourse } from "@/lib/courses";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
+import { value, type ActionResult } from "@/lib/actions/utils";
 
 /** Master admin: add a new course to the programme (score sheet + exams). */
 export async function addCourse(formData: FormData): Promise<ActionResult> {

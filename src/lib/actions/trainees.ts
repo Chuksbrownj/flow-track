@@ -11,12 +11,9 @@ import { recordTraineeChange } from "@/lib/trainee-logs";
 import { recordAudit } from "@/lib/audit";
 import { isUuid, validatePassword, validateTrainee } from "@/lib/validation";
 import { sendStudentCredentialsEmail, sendSuspendRequestNotice } from "@/lib/email";
+import { value, type ActionResult } from "@/lib/actions/utils";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
+export type { ActionResult };
 
 export async function createTrainee(formData: FormData): Promise<ActionResult> {
   const staff = await requireStaff();

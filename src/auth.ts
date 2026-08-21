@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { authConfig } from "@/auth.config";
 import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
+import type { UserRole } from "@/types/user-role";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -67,7 +68,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        return { id: user.id, name: user.name, email: user.email, role: user.role, topic: user.topic };
+        return { id: user.id, name: user.name, email: user.email, role: user.role as UserRole, topic: user.topic };
       },
     }),
   ],
@@ -75,7 +76,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt({ token, user }) {
       if (user) {
         token.id = user.id ?? "";
-        token.role = user.role ?? "admin";
+        token.role = (user.role as UserRole) ?? "admin";
         token.topic = user.topic ?? null;
       }
       return token;
@@ -83,7 +84,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     session({ session, token }) {
       if (session.user) {
         session.user.id = (token.id as string) ?? "";
-        session.user.role = (token.role as string) ?? "admin";
+        session.user.role = (token.role as UserRole) ?? "admin";
         session.user.topic = (token.topic as string | null) ?? null;
       }
       return session;

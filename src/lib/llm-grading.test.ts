@@ -65,10 +65,12 @@ describe("suggestWrittenGradesInBackground", () => {
   const answers = { q1: "Photosynthesis is...", q2: "Mitosis" };
 
   beforeEach(() => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
     updateMock.update.mockReset();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("stores sanitized LLM suggestions on a submitted row", async () => {
@@ -103,10 +105,15 @@ describe("suggestWrittenGradesInBackground", () => {
 
 describe("sweepPendingLlmGrades", () => {
   beforeEach(() => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
     selectMock.calls = 0;
     selectMock.pending = [];
     selectMock.questions = [];
     updateMock.update.mockReset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("does nothing when there are no pending submissions", async () => {

@@ -7,8 +7,7 @@ import { assessmentScores, trainees } from "@/db/schema";
 import { requireStaff } from "@/lib/auth-guard";
 import { isUuid, validateScore } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
-
-export type ActionResult = { ok: boolean; error?: string };
+import { type ActionResult } from "@/lib/actions/utils";
 
 /** Weekly scores keyed by week (YYYY-MM-DD). A null value clears that week. */
 export type CourseScoreInput = Record<string, number | null>;

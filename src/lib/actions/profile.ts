@@ -6,10 +6,10 @@ import { db } from "@/db/client";
 import { trainees, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
 import { recordAudit } from "@/lib/audit";
-import { isValidEmail } from "@/lib/validation";
+import { isValidEmail, PHONE_PATTERN } from "@/lib/validation";
+import { type ActionResult } from "@/lib/actions/utils";
 
 export type ContactDetails = { email: string | null; phone: string | null };
-export type ActionResult = { ok: boolean; error?: string };
 
 export async function getContactDetails(): Promise<ContactDetails> {
   const user = await requireUser();
@@ -23,8 +23,6 @@ export async function getContactDetails(): Promise<ContactDetails> {
 
   return { email: trainee?.email ?? null, phone: trainee?.phone ?? null };
 }
-
-const PHONE_PATTERN = /^[0-9+()\- .]+$/;
 
 /**
  * Students update their own email and phone number from their profile.

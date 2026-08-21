@@ -8,11 +8,9 @@ import { requireStaff } from "@/lib/auth-guard";
 import { isUuid, isValidUrl, validateSchedule } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 
-export type ActionResult = { ok: boolean; error?: string };
+import { value, type ActionResult } from "@/lib/actions/utils";
 
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
+export type { ActionResult };
 
 function parseInput(formData: FormData) {
   const googleFormUrl = value(formData, "googleFormUrl");

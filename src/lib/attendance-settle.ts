@@ -13,8 +13,16 @@ import { currentMonth, daysAgoStr, isCheckinOpen, isTrainingDay, todayStr } from
  * Backfills every closed day of the current month (plus today once 6pm has
  * passed), so no-sign days become absent even if nobody opens the app for a
  * while. Called lazily from pages that read attendance.
+ *
+ * Runs at most once per serverless invocation — subsequent calls in the same
+ * request are no-ops, avoiding redundant full-table scans when multiple pages
+ * trigger the settle.
  */
+let _settled = false;
+
 export async function settleAttendance() {
+  if (_settled) return;
+  _settled = true;
   const today = todayStr();
   const yesterday = daysAgoStr(1);
 

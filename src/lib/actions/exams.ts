@@ -17,8 +17,8 @@ import { isUuid } from "@/lib/validation";
 import { recordAudit } from "@/lib/audit";
 import { suggestWrittenGradesInBackground } from "@/lib/llm-grading";
 import { sendExamAvailableEmail } from "@/lib/email";
-
-export type ActionResult = { ok: boolean; error?: string; message?: string };
+import { value, type ActionResult } from "@/lib/actions/utils";
+import type { UserRole } from "@/types/user-role";
 
 export type PlayerQuestion = {
   id: string;
@@ -81,7 +81,7 @@ function percentOf(score: number | null, totalPoints: number): number | null {
 
 async function canManageExam(
   examId: string,
-  staff: { id: string; role: string }
+  staff: { id: string; role: UserRole }
 ) {
   const [exam] = await db()
     .select()
@@ -93,10 +93,6 @@ async function canManageExam(
     return { exam: null as null, error: "You can only manage exams you created." };
   }
   return { exam, error: null as null };
-}
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
 }
 
 export async function createExam(formData: FormData): Promise<ActionResult & { id?: string }> {
@@ -562,6 +558,9 @@ export async function closeExam(examId: string): Promise<ActionResult> {
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   const { exam, error } = await canManageExam(examId, staff);
   if (!exam) return { ok: false, error: error ?? "Cannot manage this exam." };
+  if (exam.status === "closed") {
+    return { ok: false, error: "This exam is already closed." };
+  }
 
   try {
     await db()
@@ -1004,7 +1003,11 @@ export async function gradeWritten(
     return { ok: false, error: "Only submitted exams can be graded." };
   }
 
-  const [exam] = await db().select().from(exams).where(eq(exams.id, submission.examId)).limit(1);
+  const [exam] = await db()
+    .select()
+    .from(exams)
+    .where(and(eq(exams.id, submission.examId), isNull(exams.deletedAt)))
+    .limit(1);
   if (!exam) return { ok: false, error: "Exam not found." };
   if (staff.role === "admin" && exam.createdById !== staff.id) {
     return { ok: false, error: "You can only grade exams you created." };

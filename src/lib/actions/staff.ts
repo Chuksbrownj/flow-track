@@ -12,11 +12,7 @@ import { isUuid } from "@/lib/validation";
 import { sendAccountCredentialsEmail } from "@/lib/email";
 import { recordAudit } from "@/lib/audit";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
+import { value, type ActionResult } from "@/lib/actions/utils";
 
 /** Staff roles: admin (trainer) and master_admin. */
 const STAFF_ROLES = ["admin", "master_admin"];

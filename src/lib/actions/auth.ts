@@ -9,17 +9,12 @@ import { requireUser } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/lib/audit";
 import { validatePassword, validateSignup } from "@/lib/validation";
+import { value, type ActionResult as BaseActionResult } from "@/lib/actions/utils";
 
-export type ActionResult = {
-  ok: boolean;
-  error?: string;
+export type ActionResult = BaseActionResult & {
   /** True when the registration code belongs to a deleted record — show the Contact-Admin prompt. */
   blocked?: boolean;
 };
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
 
 export async function logout() {
   const user = await requireUser().catch(() => null);

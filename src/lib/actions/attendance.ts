@@ -12,11 +12,9 @@ import { clientIp } from "@/lib/rate-limit";
 import { recordTraineeChange } from "@/lib/trainee-logs";
 import { recordAudit } from "@/lib/audit";
 import { isTrainingDay } from "@/lib/date";
+import { type ActionResult as BaseActionResult } from "@/lib/actions/utils";
 
-export type ActionResult = {
-  ok: boolean;
-  error?: string;
-  message?: string;
+export type ActionResult = BaseActionResult & {
   /** True when the device is not registered and the account password is required. */
   needsPassword?: boolean;
 };

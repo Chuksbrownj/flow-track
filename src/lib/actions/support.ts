@@ -9,7 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { requireStaff } from "@/lib/auth-guard";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
-export type ActionResult = { ok: boolean; error?: string; message?: string };
+import { value, type ActionResult } from "@/lib/actions/utils";
 
 export type SupportResult = { ok: boolean; error?: string; ticketNumber?: string };
 
@@ -28,10 +28,6 @@ export type SupportTicketRow = {
   adminNote: string | null;
   createdAt: string;
 };
-
-function value(formData: FormData, key: string): string {
-  return String(formData.get(key) ?? "").trim();
-}
 
 function randomTicketNumber(): string {
   // e.g. "FT-3K9QX7" — readable, unlikely to collide.

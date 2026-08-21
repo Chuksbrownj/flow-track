@@ -30,9 +30,6 @@ export default async function AttendancePage({
 }) {
   const user = await requireUser();
 
-  // Settle no-sign -> absent and unconfirmed -> absent rules before reading.
-  await settleAttendance();
-
   // Trainee self-service view (their own check-in page).
   if (user.role === "student") {
     const { month } = await searchParams;
@@ -105,6 +102,9 @@ export default async function AttendancePage({
       </div>
     );
   }
+
+  // Settle no-sign -> absent and unconfirmed -> absent rules before reading.
+  await settleAttendance();
 
   // Staff management view (master admin + admins).
   const { date, month } = await searchParams;

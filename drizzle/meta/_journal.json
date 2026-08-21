@@ -85,6 +85,13 @@
       "when": 1787267247066,
       "tag": "0011_add_missing_exam_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787292992727,
+      "tag": "0012_remarkable_jack_flag",
+      "breakpoints": true
     }
   ]
 }

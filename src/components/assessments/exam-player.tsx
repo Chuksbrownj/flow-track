@@ -141,7 +141,7 @@ export function ExamPlayer({
       void saveAnswer(session.examId, nextAnswers, nextIndex).catch(() => {
         /* autosave failures are non-fatal; the next save will retry */
       });
-    }, 600);
+    }, 2000);
   }
 
   function setAnswer(questionId: string, value: string) {
@@ -261,12 +261,16 @@ export function ExamPlayer({
         enterFullscreen();
       }
     };
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("fullscreenchange", onFullscreen);
     document.addEventListener("webkitfullscreenchange", onFullscreen);
     document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("contextmenu", onContextMenu);
 
     return () => {
       clearInterval(timer);
@@ -278,6 +282,7 @@ export function ExamPlayer({
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("webkitfullscreenchange", onFullscreen);
       document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("contextmenu", onContextMenu);
       exitFullscreen();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

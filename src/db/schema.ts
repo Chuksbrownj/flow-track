@@ -168,6 +168,7 @@ export const examSubmissions = pgTable(
   (t) => [
     uniqueIndex("assessment_submissions_exam_trainee_idx").on(t.examId, t.traineeId),
     index("assessment_submissions_trainee_idx").on(t.traineeId),
+    index("assessment_submissions_submitted_at_idx").on(t.submittedAt),
   ]
 );
 

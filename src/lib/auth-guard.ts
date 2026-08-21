@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import type { UserRole } from "@/types/user-role";
 
 export async function requireUser() {
   const session = await auth();
@@ -20,3 +21,5 @@ export async function requireStaff() {
   if (user.role !== "master_admin" && user.role !== "admin") redirect("/portal");
   return user;
 }
+
+export type { UserRole };
