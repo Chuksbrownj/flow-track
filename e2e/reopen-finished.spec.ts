@@ -126,6 +126,17 @@ test.beforeAll(async () => {
   ]);
 });
 
+test.beforeEach(async () => {
+  // Every test starts with a fresh attempt (leftovers from a prior interrupted
+  // run or an earlier test in this file are removed).
+  if (examId && traineeId) {
+    await db()
+      .delete(examSubmissions)
+      .where(and(eq(examSubmissions.examId, examId), eq(examSubmissions.traineeId, traineeId)))
+      .catch(() => {});
+  }
+});
+
 test.afterAll(async () => {
   const database = db();
   try {
@@ -151,10 +162,10 @@ async function studentLogin(page: Page) {
   await page.waitForURL(/\/portal|\/dashboard/);
 }
 
-async function openExamCard(page: Page) {
+async function openExamCard(page: Page, buttonName: string | RegExp) {
   await page.goto("/assessments");
   const card = page.locator('[data-slot="card"]').filter({ hasText: EXAM_TITLE }).first();
-  await card.getByRole("button", { name: "Start exam" }).waitFor({ timeout: 30_000 });
+  await card.getByRole("button", { name: buttonName }).waitFor({ timeout: 30_000 });
   return card;
 }
 
@@ -165,7 +176,7 @@ test("full flow: previous-question navigation, submit, and clean re-open of the 
   const page = await context.newPage();
 
   await studentLogin(page);
-  const card = await openExamCard(page);
+  const card = await openExamCard(page, "Start exam");
   await card.getByRole("button", { name: "Start exam" }).click();
   await expect(page.getByText(Q1)).toBeVisible({ timeout: 30_000 });
 
@@ -208,6 +219,67 @@ test("full flow: previous-question navigation, submit, and clean re-open of the 
         .from(examSubmissions)
         .where(and(eq(examSubmissions.examId, examId), eq(examSubmissions.traineeId, traineeId!)))
     : [];
+  expect(rows).toHaveLength(1);
+  expect(rows[0].status).toBe("submitted");
+
+  await context.close();
+});
+
+test("re-opening a finished attempt after time has run out never re-submits", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await studentLogin(page);
+  const card = await openExamCard(page, "Start exam");
+  await card.getByRole("button", { name: "Start exam" }).click();
+  await expect(page.getByText(Q1)).toBeVisible({ timeout: 30_000 });
+
+  // Take and submit the exam normally.
+  await page.getByRole("button", { name: /Alpha/ }).first().click();
+  await page.getByRole("button", { name: "Next question" }).click();
+  await expect(page.getByText(Q2)).toBeVisible();
+  await page.getByRole("button", { name: /Alpha/ }).first().click();
+  await page.getByRole("button", { name: "Submit exam" }).click();
+  await expect(page.getByText(/Submitted Successfully/)).toBeVisible({ timeout: 45_000 });
+  await page.getByRole("button", { name: "Back to exams" }).click();
+  await page.waitForURL(/\/assessments/);
+
+  // Simulate the trainee returning long after the exam clock expired: push the
+  // attempt's start far enough back that endsAt (start + duration) is in the
+  // past. The OLD bug: re-opening this attempt mounted the player, the
+  // countdown saw endsAt in the past and immediately re-submitted + toasted
+  // "Time is up".
+  const [submission] = await db()
+    .select({ id: examSubmissions.id })
+    .from(examSubmissions)
+    .where(and(eq(examSubmissions.examId, examId!), eq(examSubmissions.traineeId, traineeId!)));
+  expect(submission).toBeTruthy();
+  await db()
+    .update(examSubmissions)
+    .set({ startedAt: new Date(Date.now() - 40 * 60_000) }) // 30-min exam, 40 min ago
+    .where(eq(examSubmissions.id, submission.id));
+
+  // Fresh page load so the re-open goes through the server session load.
+  await page.reload();
+  await page.waitForURL(/\/assessments/);
+  const viewResult = page
+    .locator('[data-slot="card"]')
+    .filter({ hasText: EXAM_TITLE })
+    .first()
+    .getByRole("button", { name: /View result|View submission/ });
+  await viewResult.waitFor({ timeout: 30_000 });
+  await viewResult.click();
+
+  // The result screen is shown — NOT a re-submit, NOT a "Time is up" toast.
+  await expect(page.getByText(/Submitted Successfully|Your final grade/)).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(6_000); // several countdown ticks past the expired endsAt
+  await expect(page.getByText(/Time is up/)).not.toBeVisible();
+
+  // Ground truth: still one submitted row — the re-open never re-submitted.
+  const rows = await db()
+    .select({ status: examSubmissions.status })
+    .from(examSubmissions)
+    .where(and(eq(examSubmissions.examId, examId!), eq(examSubmissions.traineeId, traineeId!)));
   expect(rows).toHaveLength(1);
   expect(rows[0].status).toBe("submitted");
 

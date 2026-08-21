@@ -60,7 +60,7 @@ const RESULTS_FILE = process.env.LOADTEST_RESULTS ?? "/tmp/loadtest-results.json
 // first LOADTEST_STAGGER_N slots (defaults: 20000ms over the first 50).
 const STAGGER_MS = Number(process.env.LOADTEST_STAGGER_MS ?? 0);
 const STAGGER_N = Number(process.env.LOADTEST_STAGGER_N ?? 50);
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 
 function reg(i: number) {
   return `${REG_PREFIX}${String(i + 1).padStart(4, "0")}`;
@@ -309,7 +309,7 @@ test("200 trainees take the exam concurrently", async ({ browser }) => {
     concurrency: CONCURRENCY,
     questions: QUESTIONS,
     wallMs,
-    failures: failures.map((failure, index) => ({
+    failures: failures.map((failure) => ({
       reg: reg(results.indexOf(failure)),
       error: failure.error,
     })),
