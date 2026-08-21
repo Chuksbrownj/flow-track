@@ -14,7 +14,7 @@ export function Brand({ variant = "default" }: { variant?: "default" | "compact"
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
         <span className="text-sm font-bold">FT</span>
       </div>
-      <p className="text-lg font-bold font-heading text-primary">FlowTrack</p>
+      <p className="text-lg font-semibold text-primary tracking-tight">FlowTrack</p>
     </div>
   );
 }

@@ -35,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen bg-muted/40">
+      <div className="flex min-h-screen bg-background">
         <Sidebar
           role={role}
           openTicketCount={openTicketCount}
@@ -43,16 +43,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           userRole={roleLabel}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:px-6">
+          <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-outline-variant/30 bg-surface/80 px-4 backdrop-blur-md md:px-6">
             <MobileNav role={role} openTicketCount={openTicketCount} />
             <SidebarToggle role={role} />
+            <h1 className="hidden font-heading text-lg font-semibold text-primary md:block">
+              {isStaff ? "Overview" : "My Portal"}
+            </h1>
             <div className="ml-auto flex items-center gap-2 md:gap-3">
-              {role === "student" ? <NotificationBell count={unreadNotifications} /> : null}
+              {isStaff ? <NotificationBell count={openTicketCount} /> : <NotificationBell count={unreadNotifications} />}
               <ThemeToggle />
               <UserMenu name={displayName} email={session.user.email ?? ""} />
             </div>
           </header>
-          <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-20 md:p-6 md:pb-6 lg:p-8 lg:pb-8">{children}</main>
+          <main className="mx-auto w-full max-w-[1440px] flex-1 p-4 pb-20 md:p-6 md:pb-6 lg:px-8 lg:py-8">{children}</main>
         </div>
         {role === "student" ? <MobileBottomNav unreadCount={unreadNotifications} /> : null}
       </div>

@@ -205,7 +205,7 @@ export function TraineesClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold font-heading text-primary">Trainees</h1>
+          <h1 className="text-2xl font-semibold text-on-surface">Trainees</h1>
           <p className="text-sm text-muted-foreground">
             {initialTrainees.length} registered
           </p>

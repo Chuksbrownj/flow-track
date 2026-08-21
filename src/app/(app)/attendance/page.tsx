@@ -50,7 +50,7 @@ export default async function AttendancePage({
     if (!trainee) {
       return (
         <div className="space-y-6">
-          <h1 className="text-2xl font-bold font-heading text-primary">Attendance</h1>
+          <h1 className="text-2xl font-semibold text-on-surface">Attendance</h1>
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
               No trainee profile is linked to this account.
@@ -82,7 +82,7 @@ export default async function AttendancePage({
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-primary">Attendance</h1>
+            <h1 className="text-2xl font-semibold text-on-surface">Attendance</h1>
             <p className="text-sm text-muted-foreground">
               {trainee.registrationNumber ?? "Registration pending"}
             </p>

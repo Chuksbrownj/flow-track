@@ -184,7 +184,7 @@ export function ReportsClient({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-heading text-primary">Reports</h1>
+        <h1 className="text-2xl font-semibold text-on-surface">Reports</h1>
         <p className="text-sm text-muted-foreground">
           Trainee, attendance and assessment summaries with CSV export.
         </p>
