@@ -109,6 +109,44 @@ describe("ExamPlayer Escape behaviour", () => {
 
     expect(requestFullscreen).toHaveBeenCalled();
   });
+
+  it("re-enters fullscreen automatically when Escape exits it", async () => {
+    vi.useFakeTimers();
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    const element = document.documentElement as HTMLElement & {
+      requestFullscreen: () => Promise<void>;
+    };
+    element.requestFullscreen = requestFullscreen;
+    render(<ExamPlayer session={makeSession()} onDone={vi.fn()} />);
+    requestFullscreen.mockClear(); // ignore the initial mount request
+
+    setFullscreen(true);
+    setFullscreen(false); // Escape forced fullscreen off
+
+    // The fullscreenchange handler immediately tries to pull the trainee back in.
+    expect(requestFullscreen).toHaveBeenCalled();
+  });
+
+  it("keeps retrying fullscreen re-entry after Escape", async () => {
+    vi.useFakeTimers();
+    const requestFullscreen = vi.fn().mockRejectedValue(new Error("cooldown"));
+    const element = document.documentElement as HTMLElement & {
+      requestFullscreen: () => Promise<void>;
+    };
+    element.requestFullscreen = requestFullscreen;
+    render(<ExamPlayer session={makeSession()} onDone={vi.fn()} />);
+    requestFullscreen.mockClear();
+
+    setFullscreen(true);
+    setFullscreen(false); // Escape forced fullscreen off
+    const afterFirst = requestFullscreen.mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(requestFullscreen.mock.calls.length).toBeGreaterThan(afterFirst);
+  });
 });
 
 describe("ExamPlayer auto-submit", () => {

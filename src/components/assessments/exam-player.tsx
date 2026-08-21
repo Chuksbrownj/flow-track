@@ -24,11 +24,12 @@ import {
 const MAX_VIOLATIONS = 3;
 const VIOLATION_COOLDOWN_MS = 2000;
 // Escape is fully deactivated: it no longer submits or counts against the
-// trainee. A submission only happens when the trainee submits themselves, when
-// staff close the exam, or when the exam's time runs out. (Browsers still force
-// fullscreen off on Escape and scripts can't stop that, but we pull the trainee
-// back into fullscreen on the next click instead of penalising them.)
+// trainee, and we fight the browser's forced fullscreen exit by re-entering
+// fullscreen automatically. A submission only happens when the trainee submits
+// themselves, when staff close the exam, or when the exam's time runs out.
 const CLOSE_POLL_MS = 10_000;
+const FULLSCREEN_RETRY_MS = 250;
+const FULLSCREEN_RETRY_ATTEMPTS = 8; // ~2s — covers the browser's Escape cooldown
 
 function parseSelected(value: string | undefined): number[] {
   if (!value) return [];
@@ -273,8 +274,7 @@ export function ExamPlayer({
     };
     const onBlur = () => handleViolation();
     // A click while out of fullscreen is a user gesture, so the browser
-    // accepts a fullscreen request — Escape no longer submits, but we still
-    // pull the trainee back into the lockdown on their next interaction.
+    // accepts a fullscreen request immediately.
     const onPointerDown = () => {
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
       if (!document.fullscreenElement && !doc.webkitFullscreenElement) {
@@ -284,19 +284,52 @@ export function ExamPlayer({
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault();
     };
+    // Escape is inert: swallow its default and let the fullscreenchange handler
+    // below pull the trainee straight back into fullscreen.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+    };
+    // The browser force-exits fullscreen on Escape and ignores fullscreen
+    // requests for ~1s afterwards, so retry every 250ms until we're back in
+    // (or give up after ~2s — the exam keeps running either way).
+    let reenterTimer: ReturnType<typeof setTimeout> | null = null;
+    const onFullscreenChange = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      if (document.fullscreenElement || doc.webkitFullscreenElement) return;
+      if (submittingRef.current || finishedRef.current) return;
+      if (reenterTimer) clearTimeout(reenterTimer);
+      let attempts = 0;
+      const tryReenter = () => {
+        if (submittingRef.current || finishedRef.current) return;
+        if (document.fullscreenElement || doc.webkitFullscreenElement) return;
+        if (attempts >= FULLSCREEN_RETRY_ATTEMPTS) return;
+        attempts += 1;
+        enterFullscreen();
+        reenterTimer = setTimeout(tryReenter, FULLSCREEN_RETRY_MS);
+      };
+      tryReenter();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("contextmenu", onContextMenu);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 
     return () => {
       clearInterval(timer);
       clearInterval(pollClosed);
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (reenterTimer) clearTimeout(reenterTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
       exitFullscreen();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
