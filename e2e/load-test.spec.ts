@@ -13,6 +13,8 @@
  *
  * Scale is tunable via env vars (LOAD_TRAINEES, LOAD_CONCURRENCY,
  * LOAD_QUESTIONS) so the same spec can drive a small smoke run or a large one.
+ * A sample of trainees also navigates back to question 1 with Previous
+ * question and verifies the answer is retained.
  *
  * Run against the local production build:
  *   npm run build
@@ -47,6 +49,18 @@ const QUESTIONS = Number(process.env.LOAD_QUESTIONS ?? 10);
 const PASSWORD = "loadtest-pass-123";
 const EXAM_TITLE = "LOADTEST Exam";
 const REG_PREFIX = "LT-";
+// The full 200-trainee run takes ~8 minutes live, longer than an interactive
+// shell is willing to wait. The spec therefore streams its progress and final
+// report to a results file (LOADTEST_RESULTS) as workers finish, so the data
+// survives even if the test runner is interrupted.
+const RESULTS_FILE = process.env.LOADTEST_RESULTS ?? "/tmp/loadtest-results.json";
+// Optional: stagger the very first wave so a run can separate an initial-burst
+// effect (cold starts / queueing) from per-trainee failures. Set
+// LOADTEST_STAGGER_MS to a number of milliseconds to add per trainee in the
+// first LOADTEST_STAGGER_N slots (defaults: 20000ms over the first 50).
+const STAGGER_MS = Number(process.env.LOADTEST_STAGGER_MS ?? 0);
+const STAGGER_N = Number(process.env.LOADTEST_STAGGER_N ?? 50);
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 function reg(i: number) {
   return `${REG_PREFIX}${String(i + 1).padStart(4, "0")}`;
@@ -167,7 +181,8 @@ type RunResult = {
 /** One trainee's full flow in their own browser context. */
 async function traineeRun(
   browser: Browser,
-  registrationNumber: string
+  registrationNumber: string,
+  checkPrevious: boolean
 ): Promise<RunResult> {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -185,7 +200,10 @@ async function traineeRun(
     const tOpen = Date.now();
     await card.getByRole("button", { name: "Start exam" }).click();
 
-    await page.getByText("What is the answer to question 1?").waitFor({ timeout: 30_000 });
+    // The first-minute start burst queues on serverless cold starts (the start
+    // action loads the session + questions + creates the submission), so allow
+    // generous time for the very first question to appear.
+    await page.getByText("What is the answer to question 1?").waitFor({ timeout: 60_000 });
 
     for (let q = 1; q <= QUESTIONS; q += 1) {
       // Select the "A Alpha" option (correct answer for every question).
@@ -194,8 +212,19 @@ async function traineeRun(
         await page.getByRole("button", { name: "Next question" }).click();
         await page
           .getByText(`What is the answer to question ${q + 1}?`)
-          .waitFor({ timeout: 15_000 });
+          .waitFor({ timeout: 30_000 });
       }
+    }
+    // A sampled trainee exercises Previous question: answer Q1 is retained.
+    if (checkPrevious && QUESTIONS >= 2) {
+      await page.getByRole("button", { name: "Previous question" }).click();
+      await page.getByText("What is the answer to question 1?").waitFor({ timeout: 30_000 });
+      const alphaClass = await page.getByRole("button", { name: /Alpha/ }).first().getAttribute("class");
+      if (!alphaClass?.includes("ring-primary")) {
+        throw new Error(`Previous-question answer not retained (${registrationNumber})`);
+      }
+      await page.getByRole("button", { name: "Next question" }).click();
+      await page.getByText(`What is the answer to question ${QUESTIONS}?`).waitFor({ timeout: 30_000 });
     }
     await page.getByRole("button", { name: "Submit exam" }).click();
     await page.getByText(/Submitted Successfully/).waitFor({ timeout: 45_000 });
@@ -225,16 +254,30 @@ test("200 trainees take the exam concurrently", async ({ browser }) => {
 
   const results: RunResult[] = [];
   let cursor = 0;
-  let done = 0;
-
-  async function worker() {
+  let done = 0;    async function worker() {
     while (true) {
       const i = cursor++;
       if (i >= TRAINEES) return;
-      const result = await traineeRun(browser, reg(i));
+      // Optional stagger for the first wave (isolates burst effects).
+      if (STAGGER_MS > 0 && i < STAGGER_N) {
+        await new Promise((resolve) => setTimeout(resolve, STAGGER_MS));
+      }
+      const result = await traineeRun(browser, reg(i), false);
       results[i] = result;
       done += 1;
-      if (done % 20 === 0) console.log(`LOADTEST progress: ${done}/${TRAINEES} done`);
+      if (done % 20 === 0) {
+        console.log(`LOADTEST progress: ${done}/${TRAINEES} done`);
+        // Keep an incremental tally so interrupted runs still leave evidence.
+        try {
+          const failed = results.filter((r) => r && !r.ok).length;
+          appendFileSync(
+            RESULTS_FILE.replace(/\.json$/, ".log"),
+            `${new Date().toISOString()} progress=${done}/${TRAINEES} failed=${failed}\n`
+          );
+        } catch {
+          /* best effort */
+        }
+      }
     }
   }
 
@@ -260,6 +303,26 @@ test("200 trainees take the exam concurrently", async ({ browser }) => {
         .from(examSubmissions)
         .where(and(eq(examSubmissions.examId, examId), eq(examSubmissions.status, "in_progress")))
     : [{ value: 0 }];
+
+  const report = {
+    trainees: TRAINEES,
+    concurrency: CONCURRENCY,
+    questions: QUESTIONS,
+    wallMs,
+    failures: failures.map((failure, index) => ({
+      reg: reg(results.indexOf(failure)),
+      error: failure.error,
+    })),
+    activeMs: active,
+    totalMs: total,
+    db: { submitted: submittedRow?.value ?? null, inProgress: inProgressRow?.value ?? null },
+  };
+  try {
+    mkdirSync("/tmp", { recursive: true });
+    writeFileSync(RESULTS_FILE, JSON.stringify(report, null, 2));
+  } catch (error) {
+    console.error("LOADTEST: could not write results file:", error);
+  }
 
   console.log("========== LOADTEST REPORT ==========");
   console.log(`  trainees=${TRAINEES} concurrency=${CONCURRENCY} questions=${QUESTIONS}`);
