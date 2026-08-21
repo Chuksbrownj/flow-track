@@ -28,7 +28,6 @@ export default async function AssessmentsPage({
   const user = await requireUser();
   const database = db();
 
-  // ─── Student: take exams opened by staff ────────────────────────────────
   if (user.role === "student") {
     const [trainee] = await database
       .select({ id: trainees.id })
@@ -39,7 +38,7 @@ export default async function AssessmentsPage({
     if (!trainee) {
       return (
         <div className="space-y-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Assessments</h1>
+          <h1 className="text-2xl font-bold font-heading text-primary">Assessments</h1>
           <p className="text-sm text-muted-foreground">
             No trainee profile is linked to this account.
           </p>
@@ -93,8 +92,6 @@ export default async function AssessmentsPage({
                 autoScore: submission.autoScore,
                 writtenScore: submission.writtenScore,
                 totalPoints: submission.totalPoints,
-                // FEAT-05: a submission is only "graded" once the full exam has
-                // been graded (auto + reviewed written answers).
                 graded:
                   submission.status === "graded" ||
                   (submission.status === "submitted" &&
@@ -109,7 +106,7 @@ export default async function AssessmentsPage({
         <div>
           <h1 className="text-2xl font-bold font-heading text-primary">Assessments</h1>
           <p className="text-sm text-muted-foreground">
-            Manage and monitor student examinations, track progress, and review completed assessments.
+            Take assessments opened by your trainers. Exams run in full-screen mode.
           </p>
         </div>
         <TraineeExams exams={list} />
@@ -117,7 +114,6 @@ export default async function AssessmentsPage({
     );
   }
 
-  // ─── Staff: exam management + weekly score sheet ────────────────────────
   const { tab } = await searchParams;
   const staffId = user.id ?? "";
   const isAdmin = user.role === "master_admin";
@@ -229,7 +225,6 @@ export default async function AssessmentsPage({
     };
   });
 
-  // ─── Weekly score sheet data ────────────────────────────────────────────
   const currentWeek = weekKey();
 
   const [weekRows, scoreTrainees, scoreRows] = await Promise.all([
@@ -250,12 +245,9 @@ export default async function AssessmentsPage({
     database.select().from(assessmentScores),
   ]);
 
-  // Every week with a score, plus the current week (so there's always a column
-  // to enter this week's scores). Sorted oldest first.
   const weekSet = new Set<string>([currentWeek, ...weekRows.map((row) => row.week)]);
   const weeks = [...weekSet].sort();
 
-  // traineeId -> courseId -> week -> score
   const scores: Record<string, Record<string, Record<string, number>>> = {};
   for (const row of scoreRows) {
     const traineeScores = (scores[row.traineeId] ??= {});

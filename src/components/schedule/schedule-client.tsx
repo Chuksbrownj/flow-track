@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2, ChevronLeft, ChevronRight, Link2 } from "lucide-react";
+import { CalendarDays, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +14,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -33,128 +32,75 @@ function byDateTime(a: SessionRow, b: SessionRow) {
   return a.startTime < b.startTime ? -1 : 1;
 }
 
-function MiniCalendar({ currentMonth, onPrev, onNext }: { currentMonth: Date; onPrev: () => void; onNext: () => void }) {
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  const todayDate = today.getDate();
-  const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
-
-  const days = [];
-  for (let i = 0; i < firstDay; i++) {
-    days.push(<div key={`empty-${i}`} className="h-8" />);
+function groupByDate(sessions: SessionRow[]) {
+  const map = new Map<string, SessionRow[]>();
+  for (const session of sessions) {
+    const list = map.get(session.date) ?? [];
+    list.push(session);
+    map.set(session.date, list);
   }
-  for (let d = 1; d <= daysInMonth; d++) {
-    days.push(
-      <div
-        key={d}
-        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm ${
-          isCurrentMonth && d === todayDate
-            ? "bg-primary text-primary-foreground font-semibold"
-            : "text-foreground hover:bg-muted"
-        }`}
-      >
-        {d}
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-center justify-between mb-4">
-        <Button variant="ghost" size="icon" onClick={onPrev}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <h3 className="font-semibold">
-          {currentMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
-        </h3>
-        <Button variant="ghost" size="icon" onClick={onNext}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-          <div key={day} className="text-center text-xs font-medium text-muted-foreground py-1">
-            {day}
-          </div>
-        ))}
-        {days}
-      </div>
-    </div>
-  );
+  return [...map.entries()];
 }
 
 function SessionCard({
   session,
   onEdit,
   onDelete,
+  compact = false,
   readOnly = false,
 }: {
   session: SessionRow;
   onEdit: (session: SessionRow) => void;
   onDelete: (session: SessionRow) => void;
+  compact?: boolean;
   readOnly?: boolean;
 }) {
-  const programmeColors: Record<string, string> = {
-    "SAFETY PROTOCOLS": "bg-emerald-100 text-emerald-700",
-    "TECHNICAL SKILLS": "bg-amber-100 text-amber-700",
-    default: "bg-primary/10 text-primary",
-  };
-  const tagClass = programmeColors[session.programme?.toUpperCase()] ?? programmeColors.default;
-
   return (
-    <div className="flex gap-4 rounded-xl border bg-card p-4">
-      <div className="flex flex-col items-center shrink-0">
-        <p className="text-lg font-bold">{formatDay(session.date)}</p>
-        <p className="text-xs text-muted-foreground uppercase">{formatMonth(session.date)}</p>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="font-semibold text-primary">{session.title}</p>
-            {session.description && (
-              <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{session.description}</p>
-            )}
+    <div className="flex items-start justify-between gap-3 rounded-lg border bg-card p-4">
+      <div className="flex min-w-0 items-start gap-3">
+        {compact ? null : (
+          <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-md bg-gold/20 text-gold-foreground">
+            <span className="text-sm font-semibold leading-none">{formatDay(session.date)}</span>
+            <span className="text-[10px] leading-tight">{formatMonth(session.date)}</span>
           </div>
-          {!readOnly && (
-            <div className="flex shrink-0 gap-1">
-              <Button variant="ghost" size="icon" onClick={() => onEdit(session)} aria-label="Edit session">
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive"
-                onClick={() => onDelete(session)}
-                aria-label="Delete session"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className={tagClass}>
-            {session.programme}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            {formatTime(session.startTime)} - {formatTime(session.endTime)}
-          </span>
-        </div>
-        {session.googleFormUrl && (
-          <a
-            href={session.googleFormUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-          >
-            <Link2 className="h-3.5 w-3.5" />
-            Registration Form
-          </a>
         )}
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{session.title}</p>
+          <p className="text-xs text-muted-foreground">
+            {session.programme} · {formatTime(session.startTime)} – {formatTime(session.endTime)}
+          </p>
+          {session.description ? (
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{session.description}</p>
+          ) : null}
+          {session.googleFormUrl ? (
+            <a
+              href={session.googleFormUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Submit assignment
+            </a>
+          ) : null}
+        </div>
       </div>
+      {readOnly ? null : (
+        <div className="flex shrink-0 gap-1">
+          <Button variant="ghost" size="icon" onClick={() => onEdit(session)} aria-label="Edit session">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive"
+            onClick={() => onDelete(session)}
+            aria-label="Delete session"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -172,31 +118,16 @@ export function ScheduleClient({
   const [editSession, setEditSession] = useState<SessionRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SessionRow | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [filter, setFilter] = useState("all");
 
   const today = todayStr();
   const upcoming = useMemo(
     () => sessions.filter((s) => s.date >= today).sort(byDateTime),
     [sessions, today]
   );
-
-  const filteredUpcoming = useMemo(() => {
-    if (filter === "all") return upcoming;
-    return upcoming.filter((s) => s.programme?.toLowerCase() === filter.toLowerCase());
-  }, [upcoming, filter]);
-
-  const thisWeekCount = useMemo(() => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-    return sessions.filter((s) => {
-      const d = new Date(s.date);
-      return d >= weekStart && d <= weekEnd;
-    }).length;
-  }, [sessions]);
+  const past = useMemo(
+    () => sessions.filter((s) => s.date < today).sort(byDateTime),
+    [sessions, today]
+  );
 
   function handleDelete() {
     if (!deleteTarget) return;
@@ -215,72 +146,97 @@ export function ScheduleClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold font-heading text-primary">Training Schedule</h1>
+        <div>
+          <h1 className="text-2xl font-bold font-heading text-primary">Training Schedule</h1>
+          <p className="text-sm text-muted-foreground">
+            {readOnly
+              ? "Training days are Mondays, Wednesdays and Fridays. Use the submission form to send your work."
+              : "Plan and manage training sessions."}
+          </p>
+        </div>
         {!readOnly ? (
-          <Button onClick={() => setAddOpen(true)} className="gap-1.5">
+          <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
-            Create Session
+            Add session
           </Button>
         ) : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-4">
-          <MiniCalendar
-            currentMonth={currentMonth}
-            onPrev={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-            onNext={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-          />
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">This Week</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-3xl font-bold">{thisWeekCount}</span>
-                <span className="text-sm text-muted-foreground">sessions</span>
+      {sessions.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <CalendarDays className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="font-medium">No sessions scheduled</p>
+              <p className="text-sm text-muted-foreground">
+                {readOnly
+                  ? "Check back later for your training schedule."
+                  : "Add your first training session to get started."}
+              </p>
+            </div>
+            {!readOnly ? (
+              <Button onClick={() => setAddOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add session
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <section className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Upcoming ({upcoming.length})
+            </h2>
+            {upcoming.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  No upcoming sessions scheduled.
+                </CardContent>
+              </Card>
+            ) : (
+              groupByDate(upcoming).map(([date, sessionsOnDate]) => (
+                <div key={date} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {formatDay(date)} {formatMonth(date)}
+                  </p>
+                  <div className="space-y-2">
+                    {sessionsOnDate.map((session) => (
+                      <SessionCard
+                        key={session.id}
+                        session={session}
+                        onEdit={setEditSession}
+                        onDelete={setDeleteTarget}
+                        compact
+                        readOnly={readOnly}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </section>
+
+          {past.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-sm font-medium text-muted-foreground">Past ({past.length})</h2>
+              <div className="space-y-2">
+                {past.map((session) => (
+                  <SessionCard
+                    key={session.id}
+                    session={session}
+                    onEdit={setEditSession}
+                    onDelete={setDeleteTarget}
+                    readOnly={readOnly}
+                  />
+                ))}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Upcoming Sessions</h2>
-            <div className="flex gap-2">
-              {["all", "safety", "technical"].map((f) => (
-                <Button
-                  key={f}
-                  variant={filter === f ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilter(f)}
-                  className={filter === f ? "bg-primary text-primary-foreground" : ""}
-                >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {filteredUpcoming.length === 0 ? (
-            <Card>
-              <CardContent className="p-6 text-sm text-muted-foreground text-center">
-                No upcoming sessions scheduled.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredUpcoming.map((session) => (
-                <SessionCard
-                  key={session.id}
-                  session={session}
-                  onEdit={setEditSession}
-                  onDelete={setDeleteTarget}
-                  readOnly={readOnly}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+            </section>
+          ) : null}
+        </>
+      )}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>

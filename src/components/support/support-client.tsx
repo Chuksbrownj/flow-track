@@ -12,6 +12,7 @@ import {
   Mail,
   Phone,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime } from "@/lib/date";
 import {
   reopenSupportTicket,
@@ -82,18 +85,26 @@ function ContactChip({
 
 export function SupportClient({ tickets }: { tickets: SupportTicketRow[] }) {
   const router = useRouter();
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState("open");
+  const [query, setQuery] = useState("");
   const [resolveTarget, setResolveTarget] = useState<SupportTicketRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   const openCount = useMemo(() => tickets.filter((t) => t.status === "open").length, [tickets]);
+  const resolvedCount = tickets.length - openCount;
 
   const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
     return tickets.filter((t) => {
-      const matchesTab = tab === "all" || t.status === tab;
-      return matchesTab;
+      const matchesTab = tab === "open" ? t.status === "open" : t.status === "resolved";
+      if (!matchesTab) return false;
+      if (!needle) return true;
+      return [t.ticketNumber, t.name, t.email, t.phone ?? "", t.registrationNumber ?? "", t.description]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle);
     });
-  }, [tickets, tab]);
+  }, [tickets, tab, query]);
 
   function run(action: () => Promise<{ ok: boolean; error?: string; message?: string }>, onOk?: () => void) {
     startTransition(async () => {
@@ -110,138 +121,150 @@ export function SupportClient({ tickets }: { tickets: SupportTicketRow[] }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold font-heading text-primary">Support Tickets</h1>
+        <div>
+          <h1 className="text-2xl font-bold font-heading text-primary">Support tickets</h1>
+          <p className="text-sm text-muted-foreground">
+            Requests from the public &ldquo;Contact Admin&rdquo; form, handled here by any admin.
+          </p>
+        </div>
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tickets…"
+            className="pl-8"
+            aria-label="Search tickets"
+          />
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button
-          variant={tab === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setTab("all")}
-          className={tab === "all" ? "bg-primary text-primary-foreground" : ""}
-        >
-          All Tickets
-        </Button>
-        <Button
-          variant={tab === "open" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setTab("open")}
-          className={tab === "open" ? "bg-primary text-primary-foreground" : ""}
-        >
-          Open
-          {openCount > 0 && ` (${openCount})`}
-        </Button>
-        <Button
-          variant={tab === "resolved" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setTab("resolved")}
-          className={tab === "resolved" ? "bg-primary text-primary-foreground" : ""}
-        >
-          Resolved
-        </Button>
-      </div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="open">
+            Open
+            {openCount > 0 ? (
+              <span className="ml-1 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                {openCount}
+              </span>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="resolved">
+            Resolved
+            {resolvedCount > 0 ? (
+              <span className="ml-1 rounded-full bg-muted-foreground/15 px-1.5 text-xs font-semibold text-muted-foreground">
+                {resolvedCount}
+              </span>
+            ) : null}
+          </TabsTrigger>
+        </TabsList>
 
-      {filtered.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-            <Inbox className="h-8 w-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium">
-              {tickets.length === 0
-                ? "No tickets yet."
-                : tab === "open"
-                  ? "All caught up — no open tickets."
-                  : "No resolved tickets yet."}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              New submissions from the contact form will appear here.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((ticket) => (
-            <Card key={ticket.id}>
-              <CardHeader className="pb-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-base">
-                      <span className="font-mono text-primary">{ticket.ticketNumber}</span>
-                    </CardTitle>
-                    <StatusBadge status={ticket.status} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDateTime(ticket.createdAt)}
-                  </p>
-                </div>
-                <CardDescription className="flex flex-wrap items-center gap-1.5">
-                  <ContactChip icon={Mail} label="Email" value={ticket.email} />
-                  <ContactChip icon={Phone} label="Phone" value={ticket.phone} />
-                  <ContactChip icon={Hash} label="Registration" value={ticket.registrationNumber} />
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium">{ticket.name}</p>
-                  <p className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    {ticket.description}
-                  </p>
-                </div>
-
-                {ticket.status === "open" ? (
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={() => setResolveTarget(ticket)}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Mark resolved
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
-                    <p className="text-xs text-muted-foreground">
-                      Resolved by <span className="font-medium">{ticket.handledByName ?? "an admin"}</span>
-                      {" · "}
-                      {formatDateTime(ticket.handledAt)}
-                      {ticket.adminNote ? (
-                        <span className="mt-1 block italic">&ldquo;{ticket.adminNote}&rdquo;</span>
-                      ) : null}
-                    </p>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="gap-1.5">
-                          <RotateCcw className="h-4 w-4" />
-                          Reopen
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Reopen {ticket.ticketNumber}?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            The ticket moves back to the open queue so another admin can pick it up.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() =>
-                              run(() => reopenSupportTicket(ticket.id), () => router.refresh())
-                            }
-                          >
-                            Reopen ticket
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                )}
+        <TabsContent value={tab} className="mt-4">
+          {filtered.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+                <Inbox className="h-8 w-8 text-muted-foreground/50" />
+                <p className="text-sm font-medium">
+                  {tickets.length === 0
+                    ? "No tickets yet."
+                    : query
+                      ? "No tickets match your search."
+                      : tab === "open"
+                        ? "All caught up — no open tickets."
+                        : "No resolved tickets yet."}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  New submissions from the contact form will appear here.
+                </p>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((ticket) => (
+                <Card key={ticket.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-base">
+                          <span className="font-mono text-primary">{ticket.ticketNumber}</span>
+                        </CardTitle>
+                        <StatusBadge status={ticket.status} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(ticket.createdAt)}
+                      </p>
+                    </div>
+                    <CardDescription className="flex flex-wrap items-center gap-1.5">
+                      <ContactChip icon={Mail} label="Email" value={ticket.email} />
+                      <ContactChip icon={Phone} label="Phone" value={ticket.phone} />
+                      <ContactChip icon={Hash} label="Registration" value={ticket.registrationNumber} />
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">{ticket.name}</p>
+                      <p className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        {ticket.description}
+                      </p>
+                    </div>
+
+                    {ticket.status === "open" ? (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => setResolveTarget(ticket)}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Mark resolved
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Resolved by <span className="font-medium">{ticket.handledByName ?? "an admin"}</span>
+                          {" · "}
+                          {formatDateTime(ticket.handledAt)}
+                          {ticket.adminNote ? (
+                            <span className="mt-1 block italic">&ldquo;{ticket.adminNote}&rdquo;</span>
+                          ) : null}
+                        </p>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-1.5">
+                              <RotateCcw className="h-4 w-4" />
+                              Reopen
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Reopen {ticket.ticketNumber}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                The ticket moves back to the open queue so another admin can pick it up.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  run(() => reopenSupportTicket(ticket.id), () => router.refresh())
+                                }
+                              >
+                                Reopen ticket
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={resolveTarget !== null} onOpenChange={(open) => !open && setResolveTarget(null)}>
         <DialogContent className="sm:max-w-md">

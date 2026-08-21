@@ -30,7 +30,6 @@ export default async function AttendancePage({
 }) {
   const user = await requireUser();
 
-  // Trainee self-service view (their own check-in page).
   if (user.role === "student") {
     const { month } = await searchParams;
     const monthParam = validMonth(month);
@@ -51,7 +50,7 @@ export default async function AttendancePage({
     if (!trainee) {
       return (
         <div className="space-y-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
+          <h1 className="text-2xl font-bold font-heading text-primary">Attendance</h1>
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
               No trainee profile is linked to this account.
@@ -83,9 +82,9 @@ export default async function AttendancePage({
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold font-heading text-primary">Daily Attendance</h1>
+            <h1 className="text-2xl font-bold font-heading text-primary">Attendance</h1>
             <p className="text-sm text-muted-foreground">
-              Manage and record trainee attendance for today.
+              {trainee.registrationNumber ?? "Registration pending"}
             </p>
           </div>
           <StatusBadge status={trainee.status} />
@@ -103,10 +102,8 @@ export default async function AttendancePage({
     );
   }
 
-  // Settle no-sign -> absent and unconfirmed -> absent rules before reading.
   await settleAttendance();
 
-  // Staff management view (master admin + admins).
   const { date, month } = await searchParams;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr();
   const monthParam = validMonth(month);
