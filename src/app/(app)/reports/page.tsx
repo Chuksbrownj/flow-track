@@ -1,8 +1,8 @@
-import { asc, avg, count, desc, eq } from "drizzle-orm";
+import { asc, avg, count, eq } from "drizzle-orm";
 import { ReportsClient } from "@/components/reports/reports-client";
 import { requireStaff } from "@/lib/auth-guard";
 import { db } from "@/db/client";
-import { assessmentScores, attendance, trainees } from "@/db/schema";
+import { assessmentScores, trainees } from "@/db/schema";
 import { settleAttendance } from "@/lib/attendance-settle";
 import { listCourses } from "@/lib/courses";
 
@@ -29,11 +29,8 @@ export default async function ReportsPage() {
     inactiveTrainees,
     pendingTrainees,
     genderRows,
-    presentCount,
-    absentCount,
     averageRows,
     traineeRows,
-    attendanceRows,
     scoreRows,
     courseRows,
   ] = await Promise.all([
@@ -45,8 +42,6 @@ export default async function ReportsPage() {
       .select({ gender: trainees.gender, value: count() })
       .from(trainees)
       .groupBy(trainees.gender),
-    database.select({ value: count() }).from(attendance).where(eq(attendance.status, "present")),
-    database.select({ value: count() }).from(attendance).where(eq(attendance.status, "absent")),
     database
       .select({ courseId: assessmentScores.courseId, value: avg(assessmentScores.score) })
       .from(assessmentScores)
@@ -62,16 +57,6 @@ export default async function ReportsPage() {
       })
       .from(trainees)
       .orderBy(asc(trainees.fullName)),
-    database
-      .select({
-        date: attendance.date,
-        status: attendance.status,
-        traineeName: trainees.fullName,
-        registrationNumber: trainees.registrationNumber,
-      })
-      .from(attendance)
-      .innerJoin(trainees, eq(attendance.traineeId, trainees.id))
-      .orderBy(desc(attendance.date), asc(trainees.fullName)),
     database
       .select({
         traineeName: trainees.fullName,
@@ -102,14 +87,6 @@ export default async function ReportsPage() {
     list.push({ courseId: row.courseId, score: row.score });
     scoreByTrainee.set(key, list);
   }
-  const assessments = [...scoreByTrainee.entries()].map(([key, scores]) => {
-    const [traineeName, registrationNumber] = key.split("|");
-    return { traineeName: traineeName ?? "", registrationNumber: registrationNumber || null, scores };
-  });
-
-  const present = presentCount[0]?.value ?? 0;
-  const absent = absentCount[0]?.value ?? 0;
-  const attendanceRate = present + absent === 0 ? null : Math.round((present / (present + absent)) * 100);
 
   return (
     <ReportsClient
@@ -120,11 +97,6 @@ export default async function ReportsPage() {
         pending: pendingTrainees[0]?.value ?? 0,
         genders: genderRows.map((row) => ({ gender: row.gender, count: row.value })),
       }}
-      attendanceStats={{
-        present,
-        absent,
-        rate: attendanceRate,
-      }}
       assessmentAverages={assessmentAverages}
       trainees={traineeRows.map((row) => ({
         registrationNumber: row.registrationNumber,
@@ -134,13 +106,6 @@ export default async function ReportsPage() {
         email: row.email,
         status: row.status,
       }))}
-      attendance={attendanceRows.map((row) => ({
-        date: row.date,
-        traineeName: row.traineeName,
-        registrationNumber: row.registrationNumber,
-        status: row.status,
-      }))}
-      assessments={assessments}
     />
   );
 }

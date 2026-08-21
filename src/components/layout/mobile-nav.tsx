@@ -18,7 +18,6 @@ export function MobileNav({
   openTicketCount = 0,
 }: {
   role: string;
-  /** Unresolved support tickets — shown as a badge on the Support nav item. */
   openTicketCount?: number;
 }) {
   const [open, setOpen] = useState(false);

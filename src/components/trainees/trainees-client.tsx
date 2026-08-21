@@ -7,7 +7,6 @@ import {
   Ban,
   CheckCheck,
   Eye,
-  History,
   Loader2,
   Pencil,
   Plus,
@@ -17,6 +16,8 @@ import {
   Trash2,
   Users,
   XCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -46,14 +47,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { StatusBadge } from "@/components/app/status-badge";
 import {
   approveTrainee,
@@ -76,6 +69,8 @@ export type SuspendRequestRow = {
   createdAt: string;
 };
 
+const ITEMS_PER_PAGE = 10;
+
 export function TraineesClient({
   initialTrainees,
   isMaster,
@@ -83,15 +78,14 @@ export function TraineesClient({
   suspendRequests,
 }: {
   initialTrainees: TraineeRow[];
-  /** Master admin: can edit registration details and manage suspensions/deletions. */
   isMaster: boolean;
-  /** Change history for trainee details (master admin only). */
   changeLogs: TraineeLogRow[];
-  /** Pending suspension requests awaiting a master admin decision. */
   suspendRequests: SuspendRequestRow[];
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
   const [editTrainee, setEditTrainee] = useState<TraineeRow | null>(null);
   const [viewTrainee, setViewTrainee] = useState<TraineeRow | null>(null);
@@ -112,13 +106,20 @@ export function TraineesClient({
     const q = query.trim().toLowerCase();
     return initialTrainees.filter((trainee) => {
       const matchesStatus = statusFilter === "all" || trainee.status === statusFilter;
+      const matchesGender = genderFilter === "all" || trainee.gender?.toLowerCase() === genderFilter;
       const matchesQuery =
         !q ||
         trainee.fullName.toLowerCase().includes(q) ||
         (trainee.registrationNumber?.toLowerCase().includes(q) ?? false);
-      return matchesStatus && matchesQuery;
+      return matchesStatus && matchesGender && matchesQuery;
     });
-  }, [initialTrainees, query, statusFilter]);
+  }, [initialTrainees, query, statusFilter, genderFilter]);
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginatedTrainees = filtered.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const router = useRouter();
 
@@ -206,25 +207,8 @@ export function TraineesClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Trainees</h1>
-          <p className="text-sm text-muted-foreground">
-            {initialTrainees.length} registered
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isMaster ? (
-            <Button variant="outline" onClick={() => setLogsOpen(true)} className="gap-1.5">
-              <History className="h-4 w-4" />
-              Change history
-            </Button>
-          ) : null}
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add trainee
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold font-heading text-primary">Trainees</h1>
       </div>
 
       {isMaster && pendingCount > 0 ? (
@@ -277,30 +261,46 @@ export function TraineesClient({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by name or registration number..."
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search trainees..."
             className="pl-9"
             aria-label="Search trainees"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-44" aria-label="Filter by status">
-            <SelectValue placeholder="All statuses" />
+        <Select value={genderFilter} onValueChange={(v) => { setGenderFilter(v); setCurrentPage(1); }}>
+          <SelectTrigger className="w-full sm:w-40" aria-label="Filter by gender">
+            <SelectValue placeholder="All Genders" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="all">All Genders</SelectItem>
+            <SelectItem value="male">Male</SelectItem>
+            <SelectItem value="female">Female</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+          <SelectTrigger className="w-full sm:w-40" aria-label="Filter by status">
+            <SelectValue placeholder="All Statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="inactive">Inactive</SelectItem>
-            <SelectItem value="dormant">Dormant (suspended)</SelectItem>
-            <SelectItem value="deleted">Marked for deletion</SelectItem>
+            <SelectItem value="dormant">Dormant</SelectItem>
           </SelectContent>
         </Select>
+        <Button onClick={() => setAddOpen(true)} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Create Trainee
+        </Button>
       </div>
 
       {filtered.length === 0 ? (
@@ -330,32 +330,30 @@ export function TraineesClient({
       {filtered.length > 0 ? (
         <>
           <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Registration no.</TableHead>
-                  <TableHead>Full name</TableHead>
-                  <TableHead>Gender</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((trainee) => (
-                  <TableRow key={trainee.id}>
-                    <TableCell className="font-medium">{trainee.registrationNumber ?? "—"}</TableCell>
-                    <TableCell>{trainee.fullName}</TableCell>
-                    <TableCell>{trainee.gender}</TableCell>
-                    <TableCell>{trainee.phone}</TableCell>
-                    <TableCell className="max-w-48 truncate text-muted-foreground">
-                      {trainee.email ?? "—"}
-                    </TableCell>
-                    <TableCell>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Reg Number</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Gender</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Phone</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Email</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedTrainees.map((trainee) => (
+                  <tr key={trainee.id} className="border-b last:border-0">
+                    <td className="px-4 py-3 text-sm font-medium">{trainee.registrationNumber ?? "—"}</td>
+                    <td className="px-4 py-3 text-sm">{trainee.fullName}</td>
+                    <td className="px-4 py-3 text-sm">{trainee.gender}</td>
+                    <td className="px-4 py-3 text-sm">{trainee.phone}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{trainee.email ?? "—"}</td>
+                    <td className="px-4 py-3">
                       <StatusBadge status={trainee.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => setViewTrainee(trainee)} aria-label="View details">
                           <Eye className="h-4 w-4" />
@@ -426,15 +424,15 @@ export function TraineesClient({
                           </Button>
                         ) : null}
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
 
           <div className="grid gap-3 md:hidden">
-            {filtered.map((trainee) => (
+            {paginatedTrainees.map((trainee) => (
               <div key={trainee.id} className="rounded-xl border bg-card p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -521,6 +519,51 @@ export function TraineesClient({
               </div>
             ))}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-3">
+              <p className="text-sm text-muted-foreground">
+                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
+                {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of {filtered.length} entries
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
+                </Button>
+                {Array.from({ length: Math.min(3, totalPages) }, (_, i) => {
+                  const page = currentPage <= 2 ? i + 1 : currentPage + i - 1;
+                  if (page > totalPages) return null;
+                  return (
+                    <Button
+                      key={page}
+                      variant={page === currentPage ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className={page === currentPage ? "bg-primary text-primary-foreground" : ""}
+                    >
+                      {page}
+                    </Button>
+                  );
+                })}
+                {totalPages > 3 && <span className="text-muted-foreground">...</span>}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       ) : null}
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { GraduationCap } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
@@ -21,18 +21,21 @@ export default async function AdminLoginPage({
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-secondary/70 p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
       <div className="absolute right-4 top-4">
         <ThemeToggle />
       </div>
       <div className="w-full max-w-sm rounded-2xl border bg-card p-8 shadow-sm">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gold/20 text-gold-foreground">
-            <ShieldCheck className="h-6 w-6" />
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <span className="text-sm font-bold">FT</span>
+            </div>
+            <h1 className="text-2xl font-bold font-heading text-primary">FlowTrack</h1>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">Staff sign in</h1>
+          <h2 className="text-xl font-semibold tracking-tight">Staff Portal</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            OYA / HYPREP Digital Skills Training Programme
+            Secure access for administrators.
           </p>
         </div>
         {changed ? (
@@ -40,19 +43,12 @@ export default async function AdminLoginPage({
             Password updated successfully. Please sign in with your new password.
           </p>
         ) : null}
-        <div className="text-right">
-          <Link
-            href="/forgot-password"
-            className="text-xs font-medium text-primary underline-offset-3 hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-        <LoginForm buttonLabel="Sign in to dashboard" />
+        <LoginForm buttonLabel="Sign in" showRememberMe />
         <p className="mt-6 text-center text-xs text-muted-foreground">
+          <GraduationCap className="inline h-4 w-4 mr-1" />
           Are you a student?{" "}
           <Link href="/login" className="font-medium text-primary underline-offset-3 hover:underline">
-            Sign in here
+            Login here
           </Link>
         </p>
       </div>

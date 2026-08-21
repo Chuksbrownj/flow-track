@@ -107,9 +107,9 @@ export default async function AssessmentsPage({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Assessments</h1>
+          <h1 className="text-2xl font-bold font-heading text-primary">Assessments</h1>
           <p className="text-sm text-muted-foreground">
-            Take assessments opened by your trainers. Exams run in full-screen mode.
+            Manage and monitor student examinations, track progress, and review completed assessments.
           </p>
         </div>
         <TraineeExams exams={list} />
@@ -266,7 +266,7 @@ export default async function AssessmentsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Assessments</h1>
+        <h1 className="text-2xl font-bold font-heading text-primary">Assessments</h1>
         <p className="text-sm text-muted-foreground">
           {isAdmin
             ? "Create and manage exams, grade written answers, and record weekly scores."

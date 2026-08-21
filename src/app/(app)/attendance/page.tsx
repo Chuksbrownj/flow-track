@@ -83,9 +83,9 @@ export default async function AttendancePage({
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
+            <h1 className="text-2xl font-bold font-heading text-primary">Daily Attendance</h1>
             <p className="text-sm text-muted-foreground">
-              {trainee.registrationNumber ?? "Registration pending"}
+              Manage and record trainee attendance for today.
             </p>
           </div>
           <StatusBadge status={trainee.status} />
