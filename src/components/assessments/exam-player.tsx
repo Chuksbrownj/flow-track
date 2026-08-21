@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   Clock3,
@@ -17,9 +18,9 @@ import { recordViolation, saveAnswer, submitExam, type ExamSession } from "@/lib
 const MAX_VIOLATIONS = 3;
 const VIOLATION_COOLDOWN_MS = 2000;
 // Browsers force fullscreen out on the Escape key and don't let scripts stop
-// it, so the anti-cheat rules for Escape are a fallback: submit once it is
-// pressed more than twice, or after the trainee stays away from the exam
-// screen for 10 seconds.
+// it, so the anti-cheat rules for Escape are a fallback: submit once Escape is
+// pressed more than twice, or if the trainee leaves full-screen (Escape) and
+// doesn't return within 10 seconds. Staying on the screen idle never submits.
 const ESC_SUBMIT_LIMIT = 3;
 const ESC_LEAVE_MS = 10_000;
 
@@ -175,9 +176,22 @@ export function ExamPlayer({
     setIndex(nextIndex);
   }
 
+  function goPrev() {
+    if (finished) return;
+    const prevIndex = Math.max(index - 1, 0);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    void saveAnswer(session.examId, answersRef.current, prevIndex).catch(() => {});
+    setIndex(prevIndex);
+  }
+
   // Countdown + fullscreen + anti-cheat listeners.
   useEffect(() => {
     enterFullscreen();
+
+    // A stored session for an already-submitted attempt can be opened again
+    // (e.g. "View result"). Never re-run the countdown or auto-submit for it.
+    const alreadyFinished = session.status === "submitted" || session.status === "graded";
+    if (alreadyFinished) return undefined;
 
     if (new Date(session.endsAt).getTime() <= Date.now()) {
       const id = setTimeout(() => {
@@ -187,6 +201,10 @@ export function ExamPlayer({
     }
 
     const timer = setInterval(() => {
+      if (finishedRef.current) {
+        clearInterval(timer);
+        return;
+      }
       const rem = new Date(session.endsAt).getTime() - Date.now();
       if (rem <= 0) {
         clearInterval(timer);
@@ -215,6 +233,8 @@ export function ExamPlayer({
     };
     // Leaving fullscreen (which is what Escape does) starts a 10-second
     // clock: if the trainee doesn't come back in time, the exam submits.
+    // The clock only runs while the trainee is out of full-screen — simply
+    // staying on the screen (being idle) never submits the exam.
     const onFullscreen = () => {
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
       const inFullscreen = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
@@ -231,9 +251,6 @@ export function ExamPlayer({
         );
       }, ESC_LEAVE_MS);
       handleViolation();
-      // Best effort only: after Escape, browsers reject fullscreen requests
-      // until the next user gesture (see onPointerDown below).
-      enterFullscreen();
     };
     // A click while out of fullscreen is a user gesture, so the browser
     // accepts a fullscreen request — the trainee can return within the
@@ -408,10 +425,16 @@ export function ExamPlayer({
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <p className="mr-auto text-xs text-muted-foreground">
-          You cannot go back to previous questions.
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          disabled={index === 0 || submitting}
+          onClick={goPrev}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Previous question
+        </Button>
         {isLast ? (
           <Button
             className="gap-1.5"
@@ -427,11 +450,6 @@ export function ExamPlayer({
             <ArrowRight className="h-4 w-4" />
           </Button>
         )}
-        {question?.type === "multiple" ? (
-          <p className="mt-1 text-right text-[11px] text-muted-foreground">
-            Multiple answers — select every option you think is correct.
-          </p>
-        ) : null}
       </div>
     </div>
   );

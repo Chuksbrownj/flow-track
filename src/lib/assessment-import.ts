@@ -22,6 +22,15 @@ export type ImportResult = {
 export const MAX_QUESTIONS = 200;
 const OPTION_LETTERS = ["a", "b", "c", "d", "e", "f"];
 
+// A question-number prefix like "1.", "1)", "Q1." or "Question 2:".
+const QUESTION_NUMBER = /^\s*(?:question\s+)?q?\s*(\d{1,3})\s*[.):\-–—]\s+/i;
+
+/** Strips a leading question-number prefix so the app can number questions itself. */
+function stripQuestionNumber(text: string): string {
+  const match = QUESTION_NUMBER.exec(text);
+  return match ? text.slice(match[0].length).trim() : text;
+}
+
 // Default marks when a file doesn't state points: option questions carry 1
 // mark each, written (theory) questions carry 5 marks each.
 export const DEFAULT_OPTION_POINTS = 1;
@@ -114,7 +123,10 @@ export async function parseQuestionFile(file: File): Promise<ImportResult> {
         .replace(/^["']|["']$/g, "");
 
     const type = str(row.type).toLowerCase();
-    const prompt = str(row.question);
+    // The app numbers questions itself in the preview, so drop any leading
+    // "1. ", "Q2) " etc. pasted into the question column (like the free-text
+    // papers) to avoid showing "1. 1. …".
+    const prompt = stripQuestionNumber(str(row.question));
     const pointsRaw = str(row.points);
 
     // Blank points → default by type: 1 for option questions, 5 for written.
@@ -342,9 +354,6 @@ export function parseQuestionText(text: string): ImportResult {
   const POINTS_LINE = /^points\s*[::]?\s*(\d+)$/i;
   // Page numbers / "Page 1 of 2" hints left in extracted text — never questions.
   const JUNK_LINE = /^(?:page\s*)?\d+(?:\s*(?:of|\/)\s*\d+)?$/i;
-  // A question-number prefix like "1.", "1)", "Q1." or "Question 2:".
-  const QUESTION_NUMBER = /^\s*(?:question\s+)?q?\s*(\d{1,3})\s*[.):\-–—]\s+/i;
-
   const lines = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
@@ -461,7 +470,7 @@ export function parseQuestionText(text: string): ImportResult {
     // The paper's own numbering ("1. ", "Q3) ", "Question 2: ") is dropped from
     // the stored text — the app numbers questions itself in the preview and
     // the exam player, so keeping it would show "1. 1. …".
-    const storedPrompt = numberMatch ? prompt.slice(numberMatch[0].length).trim() : prompt;
+    const storedPrompt = stripQuestionNumber(prompt);
     parsed.push({
       label,
       prompt: storedPrompt,
@@ -661,6 +670,19 @@ const QUESTION_STARTER =
 function isHeaderLine(line: string): boolean {
   const text = line.trim();
 
+  // A standalone question-header line ("Question 1", "QUESTION TWO",
+  // "Question No. 3:") labels what follows — the actual question text is on
+  // the next line, so the label itself is never a question. When the prompt
+  // shares the line ("Question 1: What is...?") the number prefix is
+  // stripped by stripQuestionNumber instead and the question is kept.
+  if (
+    /^question\s+(?:(?:no\.?|number|#)\s*)?(?:\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\b(?:\s*of\s+\d+)?\s*[.:…\u2013\u2014\-]?\s*$/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+
   // Unambiguous instruction phrases — never questions.
   if (/^(?:answer|attempt|choose)\s+(?:all|any)\b/i.test(text)) return true;
   // "Answer any THREE questions." / "Answer three (3) questions from this
@@ -685,13 +707,15 @@ function isHeaderLine(line: string): boolean {
   // choose the best answer.", "Read the questions carefully.", …).
   if (
     /^(?:for|in)\s+(?:each|every)\s+question\b/i.test(text) ||
-    /^(?:choose|select|pick|circle|underline)\s+(?:the\s+)?(?:best|most\s+appropriate|correct|right|answer|option|alternative)\b/i.test(text) ||
+    /^(?:choose|select|pick|circle|underline|shade|tick)\s+(?:the\s+)?(?:best|most\s+appropriate|correct|right|answer|option|alternative|box|bubble)\b/i.test(text) ||
     /^(?:answer|attempt|write)\s+(?:the\s+)?(?:following\s+)?(?:questions?|items?)\b/i.test(text) ||
     /^(?:this|the)\s+(?:question\s+)?(?:exam|examination|test|paper|assessment|quiz)\s+(?:consists|comprises|has|contains|is\s+divided)\b/i.test(text) ||
-    /^(?:each|every|all)\s+questions?\s+(?:carries|carry|are\s+worth|is\s+worth|worth)\b/i.test(text) ||
+    /^(?:each|every|all)\s+questions?\s+(?:carries|carry|are\s+worth|is\s+worth|worth|has|have)\b/i.test(text) ||
     /^(?:read|study)\s+(?:the\s+)?(?:questions?|instructions?|passage)\b/i.test(text) ||
     /^(?:write|provide|give)\s+your\s+(?:answers?|responses?)\b/i.test(text) ||
-    /^(?:do\s+not|please\s+do\s+not)\s+write\b/i.test(text)
+    /^(?:do\s+not|please\s+do\s+not)\s+(?:write|open|turn|touch|begin|unfold)\b/i.test(text) ||
+    /^candidates?\s+(?:are\s+)?(?:required|advised|asked|expected|must|should|instructed)\b/i.test(text) ||
+    /^there\s+(?:are|is)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:sections?|parts?|questions?)\b/i.test(text)
   ) {
     return true;
   }

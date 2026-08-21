@@ -86,7 +86,7 @@ export default async function HowToUsePage() {
           <ul className="space-y-2">
             <Item>Assessments → Exams: create a draft exam, then add questions one by one or upload a CSV, Excel, PDF, Word, Markdown or HTML file. Review the parsed questions (search, filter, edit, remove) before importing them.</Item>
             <Item>Preview shows the saved questions with their answer key anytime — while the exam is still a draft you can edit them from the preview; once it has started they are locked.</Item>
-            <Item>Opening an exam asks for a closing time and notifies trainees. Exams run in full-screen: leaving the screen for more than 10 seconds or pressing Escape more than twice auto-submits the exam, so trainees can&apos;t browse away.</Item>
+            <Item>Opening an exam asks for a closing time and notifies trainees. Exams run in full-screen: pressing Escape more than twice, or pressing Escape (leaving full-screen) and not returning within 10 seconds, auto-submits the exam. Trainees can stay on the screen for the full exam time — the 10-second clock only runs while they are out of full-screen.</Item>
             <Item>The Trainees button lists who is taking the exam. If a trainee&apos;s exam was auto-submitted, use Reopen next to their name to let them resume where they left off while the exam is still open.</Item>
             <Item>After submissions, grade written answers (Grade written), then Close the exam. A closed exam can be reopened if it was closed by mistake.</Item>
           </ul>

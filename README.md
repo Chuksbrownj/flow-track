@@ -75,10 +75,12 @@ Only a Master Admin can promote an Admin to Master Admin.
   Markdown and HTML files, with a review step (search, filter, edit, remove)
   before saving and a permanent preview that stays editable while the exam is
   still a draft. Exams run in full-screen with an anti-cheat that auto-submits
-  when a trainee presses Escape more than twice or stays away from the screen
-  for over 10 seconds. Admins can see who is taking an exam (Trainees dialog),
-  reopen an auto-submitted attempt while the exam is still open, and grade
-  written answers afterwards.
+  when a trainee presses Escape more than twice, or presses Escape (leaving
+  full-screen) and doesn't return to full-screen within 10 seconds. Trainees
+  can stay on the screen for the full exam time — the 10-second clock only
+  runs while they are out of full-screen. Admins can see who is taking an exam
+  (Trainees dialog), reopen an auto-submitted attempt while the exam is still
+  open, and grade written answers afterwards.
 - **Training schedule** — sessions with an optional Google Form link per day so students submit work externally.
 - **Audit log** — every data-changing action is logged with who, what and when. Admins see student actions; master admins see everything.
 - **Reports** — summaries with CSV export.

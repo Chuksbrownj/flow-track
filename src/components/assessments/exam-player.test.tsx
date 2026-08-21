@@ -154,10 +154,76 @@ describe("ExamPlayer escape anti-cheat", () => {
     render(<ExamPlayer session={makeSession()} onDone={vi.fn()} />);
 
     setFullscreen(true);
-    setFullscreen(false); // leaving fullscreen re-requests it (best effort)
+    setFullscreen(false); // Escape left full-screen — the 10s clock starts
     fireEvent.pointerDown(document); // a click is a user gesture the browser accepts
     await act(async () => {});
 
     expect(requestFullscreen).toHaveBeenCalled();
+  });
+});
+
+describe("ExamPlayer navigation", () => {
+  it("lets a trainee go back to a previous question", () => {
+    const session = makeSession({
+      questions: [
+        { id: "q1", type: "objective", prompt: "First question?", options: ["A", "B"], points: 1 },
+        { id: "q2", type: "objective", prompt: "Second question?", options: ["A", "B"], points: 1 },
+      ],
+      currentQuestion: 1,
+    });
+    render(<ExamPlayer session={session} onDone={vi.fn()} />);
+
+    expect(screen.getByText(/Second question/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Previous question/ }));
+
+    expect(screen.getByText(/First question/)).toBeTruthy();
+    expect(vi.mocked(saveAnswer)).toHaveBeenCalledWith(EXAM_ID, expect.any(Object), 0);
+  });
+
+  it("disables Previous on the first question", () => {
+    render(<ExamPlayer session={makeSession()} onDone={vi.fn()} />);
+
+    const previous = screen.getByRole("button", {
+      name: /Previous question/,
+    }) as HTMLButtonElement;
+    expect(previous.disabled).toBe(true);
+  });
+});
+
+describe("ExamPlayer inactivity", () => {
+  it("does not auto-submit just because the trainee stays on the screen", async () => {
+    vi.useFakeTimers();
+    render(<ExamPlayer session={makeSession()} onDone={vi.fn()} />);
+
+    // Well past the 10-second full-screen window, with no Escape / full-screen exit.
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(vi.mocked(submitExam)).not.toHaveBeenCalled();
+  });
+});
+
+describe("ExamPlayer finished attempts", () => {
+  it("does not re-submit or toast 'Time is up' when a finished attempt is re-opened", async () => {
+    vi.useFakeTimers();
+    const session = makeSession({
+      status: "submitted",
+      // The countdown is long past — the old bug re-submitted instantly here.
+      endsAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    });
+    render(<ExamPlayer session={session} onDone={vi.fn()} />);
+
+    // The finished screen is shown, not the in-progress exam.
+    expect(screen.getByText(/Submitted Successfully/)).toBeTruthy();
+    expect(screen.queryByText(/Time is up/)).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(vi.mocked(submitExam)).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Time is up/)).toBeNull();
   });
 });

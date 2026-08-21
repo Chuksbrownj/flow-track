@@ -181,13 +181,18 @@ export function ExamsClient({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  function run(id: string, action: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
+  function run(
+    id: string,
+    action: () => Promise<{ ok: boolean; error?: string; message?: string }>,
+    onSuccess?: () => void
+  ) {
     setPendingId(id);
     startTransition(async () => {
       const result = await action();
       setPendingId(null);
       if (result.ok) {
         if (result.message) toast.success(result.message);
+        onSuccess?.();
         router.refresh();
       } else {
         toast.error(result.error ?? "Something went wrong.");
@@ -611,7 +616,11 @@ export function ExamsClient({
               exam={gradeTarget.exam}
               submission={gradeTarget.submission}
               onSubmit={(grades) =>
-                run(gradeTarget.submission.id, () => gradeWritten(gradeTarget.submission.id, grades))
+                run(
+                  gradeTarget.submission.id,
+                  () => gradeWritten(gradeTarget.submission.id, grades),
+                  () => setGradeTarget(null)
+                )
               }
             />
           ) : null}

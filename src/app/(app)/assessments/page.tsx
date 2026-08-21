@@ -306,19 +306,25 @@ export default async function AssessmentsPage({
                   </li>
                   <li>
                     <strong className="text-foreground">Open the exam</strong> — pick a closing time.
-                    Trainees are notified and take the exam in full-screen mode.
+                    Trainees are notified and take the exam in full-screen mode. They can move
+                    freely between questions — Previous question goes back to earlier ones and
+                    their answers are kept, so they can review or change them before submitting.
                   </li>
                   <li>
                     <strong className="text-foreground">Monitor attempts</strong> — Trainees lists who
                     is taking the exam, Results expands each attempt with scores. Exams run in
-                    full-screen: leaving the screen for more than 10 seconds or pressing Escape more
-                    than twice auto-submits the exam. If that happens, Reopen lets the trainee resume
-                    where they left off while the exam is still open.
+                    full-screen: pressing Escape more than twice, or pressing Escape (leaving
+                    full-screen) and not returning within 10 seconds, auto-submits the exam. Trainees
+                    can stay on the screen for the full exam time — the 10-second clock only runs
+                    while they are out of full-screen. If that happens, Reopen lets the trainee
+                    resume where they left off while the exam is still open.
                   </li>
                   <li>
                     <strong className="text-foreground">Grade and close</strong> — Grade written
-                    answers from the results, then Close the exam when you&apos;re done. A closed exam
-                    can be reopened if it was closed by mistake.
+                    answers from the results; a &ldquo;Grades saved successfully&rdquo; message confirms
+                    the scores were saved. Objective answers are scored automatically. Then Close
+                    the exam when you&apos;re done. A closed exam can be reopened if it was closed by
+                    mistake.
                   </li>
                 </ol>
               </CardContent>

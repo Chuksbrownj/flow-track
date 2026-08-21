@@ -174,6 +174,18 @@ describe("parseQuestionFile — CSV", () => {
     expect(result.questions?.[0].type).toBe("objective");
   });
 
+  it("strips leading question numbers pasted into the question column", async () => {
+    const content = [
+      HEADER,
+      "objective,1. Which colour model is used for print?,RGB,CMYK,HSV,HSL,B,2",
+      "written,2. Explain a concept.,,,,,,5",
+    ].join("\n");
+    const result = await parseQuestionFile(csvFile(content));
+    expect(result.ok).toBe(true);
+    expect(result.questions?.[0].prompt).toBe("Which colour model is used for print?");
+    expect(result.questions?.[1].prompt).toBe("Explain a concept.");
+  });
+
   it("accepts a numeric correct answer (1-based)", async () => {
     const content = [HEADER, "objective,Which?,Alpha,Beta,,,2,1"].join("\n");
     const result = await parseQuestionFile(csvFile(content));
@@ -748,6 +760,103 @@ describe("parseQuestionFile — document structure is skipped", () => {
       expect.objectContaining({ prompt: "What is the capital of France?" }),
       expect.objectContaining({ prompt: "Which is red?" }),
     ]);
+  });
+
+  it("drops more common instruction sentences", async () => {
+    const content = [
+      "Candidates should answer all questions.",
+      "Shade the correct answer.",
+      "Tick the correct answer.",
+      "Do not open this booklet until you are told to do so.",
+      "There are two sections in this paper.",
+      "Each question has four options.",
+      "1. What is the capital of France?",
+      "A) Paris",
+      "B) London",
+      "Answer: A",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What is the capital of France?",
+      correctOption: 0,
+    });
+  });
+
+  it("drops standalone Question N header lines instead of numbering them as questions", async () => {
+    const content = [
+      "Question 1",
+      "What is the capital of France?",
+      "A) Paris",
+      "B) London",
+      "Answer: A",
+      "Question 2",
+      "What is 2 + 2?",
+      "A) 3",
+      "B) 4",
+      "Answer: B",
+      "QUESTION THREE",
+      "Explain photosynthesis.",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(3);
+    expect(result.questions?.map((question) => [question.type, question.prompt])).toEqual([
+      ["objective", "What is the capital of France?"],
+      ["objective", "What is 2 + 2?"],
+      ["written", "Explain photosynthesis."],
+    ]);
+  });
+
+  it("keeps the prompt when it shares the line with the header (Question 1: …)", async () => {
+    const content = [
+      "Question 1: What is the capital of France?",
+      "A) Paris",
+      "B) London",
+      "Answer: A",
+    ].join("\n");
+
+    const result = await parseQuestionFile(new File([content], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What is the capital of France?",
+      correctOption: 0,
+    });
+  });
+
+  it("imports a full 100-question paper with headers between every question", async () => {
+    const lines: string[] = [];
+    for (let i = 1; i <= 100; i += 1) {
+      lines.push(`Question ${i}`);
+      lines.push(`${i}. What is the answer to question ${i}?`);
+      lines.push("A) Alpha");
+      lines.push("B) Beta");
+      lines.push("C) Gamma");
+      lines.push("D) Delta");
+      lines.push(`Answer: ${String.fromCharCode(64 + ((i % 4) + 1))}`);
+    }
+
+    const result = await parseQuestionFile(new File([lines.join("\n")], "paper.txt"));
+
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(100);
+    expect(result.questions?.[0]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 1?",
+    });
+    expect(result.questions?.[99]).toMatchObject({
+      type: "objective",
+      prompt: "What is the answer to question 100?",
+    });
   });
 });
 
