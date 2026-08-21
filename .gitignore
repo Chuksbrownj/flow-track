@@ -46,3 +46,7 @@ tmp-gate.mts
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright output
+/test-results/
+/playwright-report/
