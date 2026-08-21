@@ -50,7 +50,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               {isStaff ? "Overview" : "My Portal"}
             </h1>
             <div className="ml-auto flex items-center gap-2 md:gap-3">
-              {isStaff ? <NotificationBell count={openTicketCount} /> : <NotificationBell count={unreadNotifications} />}
+              {isStaff ? (
+                <NotificationBell count={openTicketCount} variant="tickets" />
+              ) : (
+                <NotificationBell count={unreadNotifications} variant="notifications" />
+              )}
               <ThemeToggle />
               <UserMenu name={displayName} email={session.user.email ?? ""} />
             </div>

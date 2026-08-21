@@ -4,10 +4,20 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { examQuestions, exams, examSubmissions, notifications, trainees, users } from "@/db/schema";
+import {
+  assessmentScores,
+  courses,
+  examQuestions,
+  exams,
+  examSubmissions,
+  notifications,
+  trainees,
+  users,
+} from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
 import { rateLimit } from "@/lib/rate-limit";
 import { isValidCourse } from "@/lib/courses";
+import { weekKey } from "@/lib/date";
 import {
   parseQuestionFile,
   validateImportedQuestions,
@@ -749,6 +759,23 @@ export async function startExam(examId: string): Promise<ActionResult & { sessio
   return { ok: true, session: existing };
 }
 
+/**
+ * Lightweight status check the exam player polls so it can auto-submit the
+ * moment an exam is closed by staff or its window ends — instead of relying on
+ * Escape/anti-cheat heuristics. One cheap indexed lookup per poll.
+ */
+export async function getExamOpenStatus(examId: string): Promise<{ open: boolean }> {
+  const user = await requireUser();
+  if (!isUuid(examId) || user.role !== "student") return { open: false };
+  const [exam] = await db()
+    .select({ status: exams.status, opensAt: exams.opensAt, closesAt: exams.closesAt })
+    .from(exams)
+    .where(and(eq(exams.id, examId), isNull(exams.deletedAt)))
+    .limit(1);
+  if (!exam) return { open: false };
+  return { open: isExamOpen(exam) };
+}
+
 export async function saveAnswer(
   examId: string,
   answers: Record<string, string>,
@@ -880,6 +907,52 @@ function autoGradeQuestion(
   return 0;
 }
 
+/**
+ * Mirrors a final exam score into the weekly score sheet (`assessment_scores`)
+ * so it shows in the trainee's "Latest Assessments" and counts toward their
+ * GPA/credits — the score sheet is what the portal reads, not the exam
+ * submissions. Best-effort: a failure here must never fail the grade/submit
+ * action itself.
+ */
+async function syncExamScoreToSheet(
+  submission: {
+    traineeId: string;
+    autoScore: number | null;
+    writtenScore: number | null;
+    totalPoints: number;
+    submittedAt: Date | null;
+  },
+  topic: string
+): Promise<void> {
+  try {
+    const [course] = await db()
+      .select({ id: courses.id })
+      .from(courses)
+      .where(eq(courses.name, topic))
+      .limit(1);
+    if (!course) return;
+
+    const total = submission.totalPoints > 0 ? submission.totalPoints : 1;
+    const raw = Math.round(
+      (((submission.autoScore ?? 0) + (submission.writtenScore ?? 0)) / total) * 100
+    );
+    const score = Math.max(0, Math.min(100, raw));
+    // Attribute the exam to the week it was taken (the score sheet is keyed by
+    // the Monday of each week).
+    const week = weekKey(submission.submittedAt ?? new Date());
+
+    await db()
+      .insert(assessmentScores)
+      .values({ traineeId: submission.traineeId, courseId: course.id, week, score })
+      .onConflictDoUpdate({
+        target: [assessmentScores.traineeId, assessmentScores.week, assessmentScores.courseId],
+        set: { score },
+      });
+  } catch (error) {
+    console.error("syncExamScoreToSheet failed", error);
+  }
+}
+
 export async function submitExam(examId: string): Promise<ActionResult & { result?: ExamResult }> {
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
@@ -970,6 +1043,19 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
     after(() =>
       suggestWrittenGradesInBackground(submissionId, writtenQuestions, answerSnapshot)
     );
+  } else {
+    // Fully auto-graded (no written answers) — the score is final on submit, so
+    // mirror it into the weekly score sheet right away.
+    await syncExamScoreToSheet(
+      {
+        traineeId: submission.traineeId,
+        autoScore,
+        writtenScore: null,
+        totalPoints: submission.totalPoints,
+        submittedAt: new Date(),
+      },
+      exam.topic
+    );
   }
 
   revalidatePath("/assessments");
@@ -1052,6 +1138,19 @@ export async function gradeWritten(
   } catch {
     return { ok: false, error: "Could not save the grades. Try again." };
   }
+
+  // Now that the written answers are graded, mirror the final exam score into
+  // the weekly score sheet so it appears in the trainee's "Latest Assessments".
+  await syncExamScoreToSheet(
+    {
+      traineeId: submission.traineeId,
+      autoScore: submission.autoScore,
+      writtenScore,
+      totalPoints: submission.totalPoints,
+      submittedAt: submission.submittedAt,
+    },
+    exam.topic
+  );
 
   await recordAudit({
     actorId: staff.id,

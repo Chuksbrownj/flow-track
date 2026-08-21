@@ -13,16 +13,22 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { recordViolation, saveAnswer, submitExam, type ExamSession } from "@/lib/actions/exams";
+import {
+  getExamOpenStatus,
+  recordViolation,
+  saveAnswer,
+  submitExam,
+  type ExamSession,
+} from "@/lib/actions/exams";
 
 const MAX_VIOLATIONS = 3;
 const VIOLATION_COOLDOWN_MS = 2000;
-// Browsers force fullscreen out on the Escape key and don't let scripts stop
-// it, so the anti-cheat rules for Escape are a fallback: submit once Escape is
-// pressed more than twice, or if the trainee leaves full-screen (Escape) and
-// doesn't return within 10 seconds. Staying on the screen idle never submits.
-const ESC_SUBMIT_LIMIT = 3;
-const ESC_LEAVE_MS = 10_000;
+// Escape is fully deactivated: it no longer submits or counts against the
+// trainee. A submission only happens when the trainee submits themselves, when
+// staff close the exam, or when the exam's time runs out. (Browsers still force
+// fullscreen off on Escape and scripts can't stop that, but we pull the trainee
+// back into fullscreen on the next click instead of penalising them.)
+const CLOSE_POLL_MS = 10_000;
 
 function parseSelected(value: string | undefined): number[] {
   if (!value) return [];
@@ -78,8 +84,6 @@ export function ExamPlayer({
   const submittingRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const answersRef = useRef(answers);
-  const escCount = useRef(0);
-  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDoneRef = useRef(onDone);
 
   useEffect(() => {
@@ -173,13 +177,6 @@ export function ExamPlayer({
     });
   }
 
-  function clearExitTimer() {
-    if (exitTimer.current) {
-      clearTimeout(exitTimer.current);
-      exitTimer.current = null;
-    }
-  }
-
   function scheduleSave(nextAnswers: Record<string, string>, nextIndex: number) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -259,47 +256,25 @@ export function ExamPlayer({
       }
     }, 1000);
 
+    // Poll the exam's open status so a trainee is auto-submitted the moment
+    // staff close the exam (or the global close time passes). Lightweight and
+    // idempotent — it never double-submits thanks to submittingRef/finishedRef.
+    const pollClosed = setInterval(() => {
+      if (submittingRef.current || finishedRef.current) return;
+      void getExamOpenStatus(session.examId).then(({ open }) => {
+        if (!open && !submittingRef.current && !finishedRef.current) {
+          void doSubmit("The exam was closed — your answers were submitted automatically.");
+        }
+      });
+    }, CLOSE_POLL_MS);
+
     const onVisibility = () => {
       if (document.visibilityState === "hidden") handleViolation();
     };
     const onBlur = () => handleViolation();
-    // Every Escape press counts — more than two and the exam submits. This
-    // runs on keydown because after the first press the browser is already
-    // out of fullscreen, so later presses fire no fullscreenchange event.
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || submittingRef.current || finishedRef.current) return;
-      escCount.current += 1;
-      if (escCount.current >= ESC_SUBMIT_LIMIT) {
-        clearExitTimer();
-        void doSubmit(
-          `Auto-submitted — Escape was pressed ${escCount.current} times. Ask a trainer to override if needed.`
-        );
-      }
-    };
-    // Leaving fullscreen (which is what Escape does) starts a 10-second
-    // clock: if the trainee doesn't come back in time, the exam submits.
-    // The clock only runs while the trainee is out of full-screen — simply
-    // staying on the screen (being idle) never submits the exam.
-    const onFullscreen = () => {
-      const doc = document as Document & { webkitFullscreenElement?: Element | null };
-      const inFullscreen = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
-      if (inFullscreen) {
-        clearExitTimer(); // back in the exam — the clock is cancelled
-        return;
-      }
-      if (submittingRef.current || finishedRef.current) return;
-      clearExitTimer();
-      exitTimer.current = setTimeout(() => {
-        exitTimer.current = null;
-        void doSubmit(
-          "Auto-submitted — you left the exam screen for more than 10 seconds. Ask a trainer to override if needed."
-        );
-      }, ESC_LEAVE_MS);
-      handleViolation();
-    };
     // A click while out of fullscreen is a user gesture, so the browser
-    // accepts a fullscreen request — the trainee can return within the
-    // 10-second window instead of being auto-submitted.
+    // accepts a fullscreen request — Escape no longer submits, but we still
+    // pull the trainee back into the lockdown on their next interaction.
     const onPointerDown = () => {
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
       if (!document.fullscreenElement && !doc.webkitFullscreenElement) {
@@ -311,21 +286,15 @@ export function ExamPlayer({
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("fullscreenchange", onFullscreen);
-    document.addEventListener("webkitfullscreenchange", onFullscreen);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("contextmenu", onContextMenu);
 
     return () => {
       clearInterval(timer);
+      clearInterval(pollClosed);
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      clearExitTimer();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", onBlur);
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("fullscreenchange", onFullscreen);
-      document.removeEventListener("webkitfullscreenchange", onFullscreen);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("contextmenu", onContextMenu);
       exitFullscreen();
@@ -467,7 +436,7 @@ export function ExamPlayer({
           </div>
         ) : (
           <Textarea
-            className="mt-4 min-h-32"
+            className="mt-4 min-h-64"
             placeholder="Type your answer here..."
             value={answers[question?.id ?? ""] ?? ""}
             onChange={(event) => question && setAnswer(question.id, event.target.value)}
