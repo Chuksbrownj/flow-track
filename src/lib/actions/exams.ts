@@ -6,6 +6,7 @@ import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { examQuestions, exams, examSubmissions, notifications, trainees, users } from "@/db/schema";
 import { requireStaff, requireUser } from "@/lib/auth-guard";
+import { rateLimit } from "@/lib/rate-limit";
 import { isValidCourse } from "@/lib/courses";
 import {
   parseQuestionFile,
@@ -50,6 +51,17 @@ export type ExamSession = {
   status: "in_progress" | "submitted" | "graded";
   result?: ExamResult;
 };
+
+// Per-user abuse limits for the exam-taking actions. Generous for legitimate
+// use (the player's autosave is debounced; a trainee submits once) but they
+// stop scripted hammering — each submit would otherwise re-run background
+// LLM grading and write a DB row per save.
+const EXAM_SAVE_LIMIT = 60; // autosaves per minute
+const EXAM_SAVE_WINDOW_MS = 60_000;
+const EXAM_VIOLATION_LIMIT = 30; // window-switch records per minute
+const EXAM_VIOLATION_WINDOW_MS = 60_000;
+const EXAM_SUBMIT_LIMIT = 5; // submits per minute (client already blocks double-clicks)
+const EXAM_SUBMIT_WINDOW_MS = 60_000;
 
 function isExamOpen(
   exam: { status: string; opensAt: Date | null; closesAt: Date | null },
@@ -747,6 +759,11 @@ export async function saveAnswer(
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
 
+  // The player autosaves on every answer/navigation (debounced), so legitimate
+  // use is well under this; it only trips scripted abuse.
+  const limited = await rateLimit(`exam:save:${user.id}`, EXAM_SAVE_LIMIT, EXAM_SAVE_WINDOW_MS);
+  if (!limited.ok) return { ok: false, error: "Too many saves. Try again shortly." };
+
   const [exam] = await db()
     .select()
     .from(exams)
@@ -797,6 +814,9 @@ export async function recordViolation(examId: string): Promise<ActionResult & { 
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
+
+  const limited = await rateLimit(`exam:violation:${user.id}`, EXAM_VIOLATION_LIMIT, EXAM_VIOLATION_WINDOW_MS);
+  if (!limited.ok) return { ok: false, error: "Too many window switches. Slow down." };
 
   const [trainee] = await db()
     .select({ id: trainees.id })
@@ -865,6 +885,11 @@ export async function submitExam(examId: string): Promise<ActionResult & { resul
   const user = await requireUser();
   if (!isUuid(examId)) return { ok: false, error: "Exam not found." };
   if (user.role !== "student") return { ok: false, error: "Only students can take exams." };
+
+  // A trainee submits once; this only catches a runaway client or scripted
+  // abuse hammering submit (each call would otherwise re-run LLM grading).
+  const limited = await rateLimit(`exam:submit:${user.id}`, EXAM_SUBMIT_LIMIT, EXAM_SUBMIT_WINDOW_MS);
+  if (!limited.ok) return { ok: false, error: "You already submitted. Refresh to see your result." };
 
   const [exam] = await db()
     .select()
